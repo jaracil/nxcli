@@ -146,6 +146,10 @@ func NewNexusConn(conn net.Conn) *NexusConn {
 	return nc
 }
 
+func (nc *NexusConn) GetContext() context.Context {
+	return nc.context
+}
+
 func (nc *NexusConn) pushReq(req *JsonRpcReq) (err error) {
 	select {
 	case nc.chReq <- req:
