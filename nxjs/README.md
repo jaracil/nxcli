@@ -31,4 +31,27 @@ dial("wss://localhost.n4m.zone", function(nc, err){
 
 ## Subscribe a pipe to a channel
 
+```javascript
+var nexus = require("./nxjs.js")
+
+nexus.dial("wss://localhost.n4m.zone", function(nc, err){
+  nc.Login("dummyUser", "dummyPass", function(){
+  
+    nc.PipeCreate({"len": 100}, function(pipe, e){
+      nc.ChanSubscribe(pipe, "temperatures",
+        //Subscription succeeded
+        function(){
+          console.log("Subscribed pipe", pipe.Id(), "to channel temperatures")
+        
+          pipe.Read(10, 60, function(msgs, err){
+           console.log("Received messages:", msgs)
+          })
+        },
+        // Subscription failed
+        function(err){ console.log("Error subscribing the pipe to the channel:", err)})
+    })
+  })
+})
+```
+
   
