@@ -121,9 +121,9 @@ type Msg struct {
 }
 
 type PipeData struct {
-	Msgs    []*Msg
-	Waiting int
-	Drops   int
+	Msgs    []*Msg `json:"Msgs"`
+	Waiting int    `json:"Waiting"`
+	Drops   int    `json:"Drops"`
 }
 
 type PipeOpts struct {

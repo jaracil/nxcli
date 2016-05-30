@@ -6,20 +6,21 @@ import (
 	"net/url"
 
 	"github.com/goxjs/websocket"
+	"github.com/jaracil/nxcli/nxcore"
 )
 
-func Dial(s string, opts *DialOptions) (*NexusConn, error) {
+func Dial(s string, _ interface{}) (*nxcore.NexusConn, error) {
 
 	u, err := url.Parse(s)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := websocket.Dial(u.String(), opts.WsConfig.Origin)
+	conn, err := websocket.Dial(u.String(), "http://gopherjs.nexus")
 
 	if err != nil {
 		return nil, err
 	}
 
-	return NewNexusConn(conn), nil
+	return nxcore.NewNexusConn(conn), nil
 }

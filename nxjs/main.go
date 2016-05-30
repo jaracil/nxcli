@@ -1,0 +1,54 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/gopherjs/gopherjs/js"
+	"github.com/jaracil/nxcli"
+)
+
+func main() {
+
+	// Node.js
+	if require := js.Global.Get("require"); require != js.Undefined {
+		if ws := require.Invoke("ws"); ws != js.Undefined {
+			fmt.Println("Running on Node.js with websocket module: 'ws'")
+
+			if removeListener := ws.Get("prototype").Get("removeEventListener"); removeListener == js.Undefined {
+				fmt.Println("Missing removeEventListener! Patching WebSocket library...")
+
+				ws.Get("prototype").Set("removeEventListener", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+					this.Call("removeListener", args[0], args[1])
+					return nil
+				}))
+
+				fmt.Println("OK")
+			}
+
+			js.Global.Set("WebSocket", ws)
+		} else {
+			fmt.Println("Running on Node.js but websocket module missing")
+		}
+	}
+
+	dial := func(a string, cb func(interface{}, error)) {
+		go func() {
+			nc, e := nexus.Dial(a, nil)
+
+			jsnc := js.MakeWrapper(nc)
+			PatchNexusAsync(jsnc, nc)
+
+			go cb(jsnc, e)
+		}()
+	}
+
+	if js.Module == js.Undefined {
+		// Browser
+		js.Global.Set("dial", dial)
+	} else {
+		// Node.js
+		js.Module.Get("exports").Set("dial", dial)
+	}
+
+	fmt.Println("Nexus Client loaded")
+}
