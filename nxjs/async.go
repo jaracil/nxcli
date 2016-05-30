@@ -69,9 +69,9 @@ func PatchPipeAsync(jspipe *js.Object, pipe *nxcore.Pipe) {
 		}()
 	})
 
-	jspipe.Set("Read", func(max int, timeout time.Duration, cb ...*js.Object) {
+	jspipe.Set("Read", func(max int, timeout int, cb ...*js.Object) {
 		go func() {
-			r, e := pipe.Read(max, timeout)
+			r, e := pipe.Read(max, time.Duration(timeout)*time.Second)
 			if e != nil {
 				ret(nil, e, cb)
 				return
@@ -112,16 +112,16 @@ func PatchNexusAsync(jsnc *js.Object, nc *nxcore.NexusConn) {
 		}()
 	})
 
-	jsnc.Set("TaskPush", func(method string, params interface{}, timeout time.Duration, cb ...*js.Object) {
+	jsnc.Set("TaskPush", func(method string, params interface{}, timeout int, cb ...*js.Object) {
 		go func() {
-			r, e := nc.TaskPush(method, params, timeout)
+			r, e := nc.TaskPush(method, params, time.Duration(timeout)*time.Second)
 			ret(r, e, cb)
 		}()
 	})
 
-	jsnc.Set("TaskPull", func(prefix string, timeout time.Duration, cb ...*js.Object) {
+	jsnc.Set("TaskPull", func(prefix string, timeout int, cb ...*js.Object) {
 		go func() {
-			r, e := nc.TaskPull(prefix, timeout)
+			r, e := nc.TaskPull(prefix, time.Duration(timeout)*time.Second)
 			if e != nil {
 				ret(nil, e, cb)
 				return
@@ -260,9 +260,9 @@ func PatchNexusAsync(jsnc *js.Object, nc *nxcore.NexusConn) {
 		}()
 	})
 
-	jsnc.Set("Ping", func(timeout time.Duration, cb ...*js.Object) {
+	jsnc.Set("Ping", func(timeout int, cb ...*js.Object) {
 		go func() {
-			e := nc.Ping(timeout)
+			e := nc.Ping(time.Duration(timeout) * time.Second)
 			ret(nil, e, cb)
 		}()
 	})
