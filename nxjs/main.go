@@ -44,7 +44,7 @@ func main() {
 
 	if js.Module == js.Undefined {
 		// Browser
-		js.Global.Set("dial", dial)
+		js.Global.Set("Nexus", dial)
 	} else {
 		// Node.js
 		js.Module.Get("exports").Set("dial", dial)
