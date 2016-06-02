@@ -5,6 +5,7 @@ import (
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/jaracil/nxcli"
+	"github.com/jaracil/nxcli/nxcore"
 )
 
 func main() {
@@ -44,7 +45,10 @@ func main() {
 
 	if js.Module == js.Undefined {
 		// Browser
-		js.Global.Set("dial", dial)
+		js.Global.Set("Nexus", make(map[interface{}]interface{}))
+		nexus := js.Global.Get("Nexus")
+		nexus.Set("Dial", dial)
+		nexus.Set("Errors", nxcore.ErrStr)
 	} else {
 		// Node.js
 		js.Module.Get("exports").Set("dial", dial)
