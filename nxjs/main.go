@@ -43,16 +43,19 @@ func main() {
 		}()
 	}
 
+	var nexus *js.Object
+
 	if js.Module == js.Undefined {
 		// Browser
 		js.Global.Set("Nexus", make(map[interface{}]interface{}))
-		nexus := js.Global.Get("Nexus")
-		nexus.Set("Dial", dial)
-		nexus.Set("Errors", nxcore.ErrStr)
+		nexus = js.Global.Get("Nexus")
 	} else {
 		// Node.js
-		js.Module.Get("exports").Set("dial", dial)
+		nexus = js.Module.Get("exports")
 	}
+
+	nexus.Set("Dial", dial)
+	nexus.Set("Errors", nxcore.ErrStr)
 
 	fmt.Println("Nexus Client loaded")
 }
