@@ -126,7 +126,7 @@ func (s *Service) GetMethods() []string {
 	return ms
 }
 
-// GracefulStop stops pulling tasks, tries to finish working tasks and then cancel nexus connection
+// GracefulStop stops pulling tasks, tries to finish working tasks and then cancels nexus connection (with a timeout)
 func (s *Service) GracefulStop() {
 	select {
 	case s.stopServeCh <- true:
@@ -224,17 +224,21 @@ func (s *Service) Serve() error {
 				log.Printf("STATS: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]\n", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
 			}
 		case graceful = <-s.stopServeCh: // Someone called Stop() or GracefulStop()
-			s.stopping = true
-			if !graceful {
-				s.nc.Cancel()
-				gracefulTimeout = time.NewTimer(time.Second)
-				return nil
+			if !s.stopping {
+				s.stopping = true
+				// Stop()
+				if !graceful {
+					s.nc.Cancel()
+					gracefulTimeout = time.NewTimer(time.Second)
+					continue
+				}
+				// GracefulStop()
+				gracefulTimeout = time.NewTimer(s.GracefulExitTime)
+				go func() {
+					s.wg.Wait()
+					wgDoneCh <- true
+				}()
 			}
-			gracefulTimeout = time.NewTimer(s.GracefulExitTime)
-			go func() {
-				s.wg.Wait()
-				wgDoneCh <- true
-			}()
 		case <-wgDoneCh: // All workers finished
 			s.nc.Cancel()
 			continue
@@ -244,17 +248,21 @@ func (s *Service) Serve() error {
 			}
 			s.nc.Cancel()
 			return fmt.Errorf("Graceful stop: timeout after %s\n", s.GracefulExitTime.String())
-		case <-s.nc.GetContext().Done():
+		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.stopping {
 				if s.DebugEnabled {
-					log.Printf("Stopped gracefully")
+					if graceful {
+						log.Printf("Stopped gracefully")
+					} else {
+						log.Printf("Stopped")
+					}
 				}
 				return nil
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				return fmt.Errorf("Nexus connection closed: stopped serving: %s", ctxErr.Error())
+				return fmt.Errorf("Nexus connection ended: stopped serving: %s", ctxErr.Error())
 			}
-			return fmt.Errorf("Nexus connection closed: stopped serving")
+			return fmt.Errorf("Nexus connection ended: stopped serving")
 		}
 	}
 	return nil
