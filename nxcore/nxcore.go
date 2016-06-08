@@ -463,12 +463,7 @@ func (nc *NexusConn) PipeCreate(opts *PipeOpts) (*Pipe, error) {
 	if err != nil {
 		return nil, err
 	}
-	pipe := &Pipe{
-		nc:     nc,
-		pipeId: ei.N(res).M("pipeid").StringZ(),
-	}
-	pipe.context, pipe.cancelFun = context.WithCancel(nc.context)
-	return pipe, nil
+	return nc.PipeOpen(ei.N(res).M("pipeid").StringZ())
 }
 
 // ChanSubscribe subscribes a pipe to a channel.
