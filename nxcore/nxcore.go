@@ -111,8 +111,10 @@ type Task struct {
 }
 
 type Pipe struct {
-	nc     *NexusConn
-	pipeId string
+	nc        *NexusConn
+	pipeId    string
+	context   context.Context
+	cancelFun context.CancelFunc
 }
 
 type Msg struct {
@@ -169,8 +171,7 @@ func (nc *NexusConn) pullReq() (req *JsonRpcReq, err error) {
 }
 
 func (nc *NexusConn) mainWorker() {
-	defer nc.conn.Close()
-	defer nc.Cancel()
+	defer nc.Close()
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
@@ -198,7 +199,7 @@ func (nc *NexusConn) mainWorker() {
 }
 
 func (nc *NexusConn) sendWorker() {
-	defer nc.Cancel()
+	defer nc.Close()
 	for {
 		req, err := nc.pullReq()
 		if err != nil {
@@ -217,7 +218,7 @@ func (nc *NexusConn) sendWorker() {
 }
 
 func (nc *NexusConn) recvWorker() {
-	defer nc.Cancel()
+	defer nc.Close()
 	dec := json.NewDecoder(nc.connRx)
 	for dec.More() {
 		res := &JsonRpcRes{}
@@ -252,8 +253,9 @@ func (nc *NexusConn) delId(id uint64) {
 	nc.resTableLock.Unlock()
 }
 
-func (nc *NexusConn) Cancel() {
+func (nc *NexusConn) Close() {
 	nc.cancelFun()
+	nc.conn.Close()
 }
 
 func (nc *NexusConn) Closed() bool {
@@ -417,6 +419,7 @@ func (nc *NexusConn) PipeCreate(opts *PipeOpts) (*Pipe, error) {
 		nc:     nc,
 		pipeId: ei.N(res).M("pipeid").StringZ(),
 	}
+	pipe.context, pipe.cancelFun = context.WithCancel(nc.context)
 	return pipe, nil
 }
 
@@ -445,6 +448,7 @@ func (nc *NexusConn) ChanPublish(channel string, msg interface{}) (interface{}, 
 }
 
 func (p *Pipe) Close() (interface{}, error) {
+	p.cancelFun()
 	par := map[string]interface{}{
 		"pipeid": p.pipeId,
 	}
@@ -488,6 +492,30 @@ func (p *Pipe) Read(max int, timeout time.Duration) (*PipeData, error) {
 	}
 
 	return &PipeData{Msgs: msgres, Waiting: waiting, Drops: drops}, nil
+}
+
+func (p *Pipe) Listen(ch chan *Msg) chan *Msg {
+	if ch == nil {
+		ch = make(chan *Msg)
+	}
+	go func() {
+		for {
+			data, err := p.Read(100000, 0)
+			if err != nil {
+				close(ch)
+				return
+			}
+			for _, msg := range data.Msgs {
+				select {
+				case ch <- msg:
+				case <-p.context.Done():
+					close(ch)
+					return
+				}
+			}
+		}
+	}()
+	return ch
 }
 
 func (p *Pipe) Id() string {
