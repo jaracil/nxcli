@@ -228,7 +228,7 @@ func (s *Service) Serve() error {
 				s.stopping = true
 				// Stop()
 				if !graceful {
-					s.nc.Cancel()
+					s.nc.Close()
 					gracefulTimeout = time.NewTimer(time.Second)
 					continue
 				}
@@ -240,13 +240,13 @@ func (s *Service) Serve() error {
 				}()
 			}
 		case <-wgDoneCh: // All workers finished
-			s.nc.Cancel()
+			s.nc.Close()
 			continue
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
 				return nil
 			}
-			s.nc.Cancel()
+			s.nc.Close()
 			return fmt.Errorf("Graceful stop: timeout after %s\n", s.GracefulExitTime.String())
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.stopping {
@@ -285,7 +285,7 @@ func (s *Service) taskPull(n int) {
 			if s.DebugEnabled {
 				log.Printf("Error pulling task on pull %d: %s\n", n, err.Error())
 			}
-			s.nc.Cancel()
+			s.nc.Close()
 			s.threadsSem.Release()
 			return
 		}
