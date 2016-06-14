@@ -102,6 +102,7 @@ type NexusConn struct {
 	resTable     map[uint64]chan *JsonRpcRes
 	resTableLock sync.Mutex
 	chReq        chan *JsonRpcReq
+	closed       int32 //Goroutine safe bool
 	context      context.Context
 	cancelFun    context.CancelFunc
 	wdog         int64
@@ -220,8 +221,12 @@ func (nc *NexusConn) sendWorker() {
 		if err != nil {
 			break
 		}
-		_, err = nc.connTx.Write(buf)
-		if err != nil {
+		if !nc.Closed() {
+			_, err = nc.connTx.Write(buf)
+			if err != nil {
+				break
+			}
+		} else {
 			break
 		}
 	}
@@ -270,18 +275,20 @@ func (nc *NexusConn) GetContext() context.Context {
 
 // Close closes nexus connection.
 func (nc *NexusConn) Close() {
-	nc.cancelFun()
-	nc.conn.Close()
+	if atomic.CompareAndSwapInt32(&nc.closed, 0, 1) {
+		nc.cancelFun()
+		nc.conn.Close()
+	}
 }
 
 // Closed returns Nexus connection state.
 func (nc *NexusConn) Closed() bool {
-	return nc.context.Err() != nil
+	return atomic.LoadInt32(&nc.closed) == 1
 }
 
 // ExecNoWait is a low level JSON-RPC call function, it don't wait response from server.
 func (nc *NexusConn) ExecNoWait(method string, params interface{}) (id uint64, rch chan *JsonRpcRes, err error) {
-	if nc.context.Err() != nil {
+	if nc.Closed() {
 		err = NewJsonRpcErr(ErrCancel, "", nil)
 		return
 	}
