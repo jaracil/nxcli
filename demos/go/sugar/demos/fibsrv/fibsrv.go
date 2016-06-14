@@ -7,11 +7,24 @@ import (
 	"github.com/jaracil/ei"
 	"github.com/jaracil/nxcli/demos/go/sugar"
 	nexus "github.com/jaracil/nxcli/nxcore"
+	"github.com/jessevdk/go-flags"
 )
 
+var opts struct {
+	Host   string `long:"host" description:"Nexus tcp://[user:pass@]host[:port]" default:"tcp://test:test@localhost:1717"`
+	Prefix string `long:"prefix" description:"Nexus listen prefix" default:"test.sugar.fibsrv"`
+}
+
 func main() {
+	// Parse options
+	_, err := flags.Parse(&opts)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+
 	// Define service
-	s := sugar.NewService("tcp://test:test@nexus.n4m.zone:1717", "test.fibonacci", &sugar.ServiceOpts{
+	s := sugar.NewService(opts.Host, opts.Prefix, &sugar.ServiceOpts{
 		Pulls:       5,
 		PullTimeout: time.Hour,
 		MaxThreads:  10,
