@@ -33,7 +33,7 @@ func main() {
 	dial := func(a string, cb func(interface{}, error)) {
 		go func() {
 			nc, e := nexus.Dial(a, nil)
-			go cb(WrapNexusConn(nc), e)
+			cb(WrapNexusConn(nc), e)
 		}()
 	}
 
