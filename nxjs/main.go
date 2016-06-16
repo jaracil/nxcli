@@ -7,22 +7,15 @@ import (
 )
 
 func main() {
-
 	// Node.js
 	if require := js.Global.Get("require"); require != js.Undefined {
 		if ws := require.Invoke("ws"); ws != js.Undefined {
 			println("Running on Node.js with websocket module: 'ws'")
 
-			ws.Get("prototype").Set("addEventListener", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-				this.Call("addListener", args[0], args[1])
-				return nil
-			}))
-
 			ws.Get("prototype").Set("removeEventListener", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-				this.Call("removeListener", args[0], args[1])
+				// Do nothing in nodejs, we can't remove EventListener
 				return nil
 			}))
-
 			js.Global.Set("WebSocket", ws)
 		} else {
 			println("Running on Node.js but websocket module missing (try: npm install ws)")
