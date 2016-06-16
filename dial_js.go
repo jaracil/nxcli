@@ -16,7 +16,7 @@ func Dial(s string, _ interface{}) (*nxcore.NexusConn, error) {
 		return nil, err
 	}
 
-	conn, err := wsck.Dial(u.String(), "http://gopherjs.nexus")
+	conn, err := websocket.Dial(u.String(), "http://gopherjs.nexus")
 
 	if err != nil {
 		return nil, err
