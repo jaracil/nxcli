@@ -5,8 +5,8 @@ package nexus
 import (
 	"net/url"
 
-	"github.com/goxjs/websocket"
 	"github.com/jaracil/nxcli/nxcore"
+	"github.com/jaracil/wsck"
 )
 
 func Dial(s string, _ interface{}) (*nxcore.NexusConn, error) {
@@ -16,7 +16,7 @@ func Dial(s string, _ interface{}) (*nxcore.NexusConn, error) {
 		return nil, err
 	}
 
-	conn, err := websocket.Dial(u.String(), "http://gopherjs.nexus")
+	conn, err := wsck.Dial(u.String(), "http://gopherjs.nexus")
 
 	if err != nil {
 		return nil, err
