@@ -7,30 +7,17 @@ import (
 	"github.com/jaracil/ei"
 	"github.com/jaracil/nxcli/demos/go/sugar"
 	nexus "github.com/jaracil/nxcli/nxcore"
-	"github.com/jessevdk/go-flags"
 )
 
-var opts struct {
-	Host   string `long:"host" description:"Nexus tcp://[user:pass@]host[:port]" default:"tcp://test:test@localhost:1717"`
-	Prefix string `long:"prefix" description:"Nexus listen prefix" default:"test.sugar.fibsrv"`
-}
-
 func main() {
-	// Parse options
-	_, err := flags.Parse(&opts)
+	// Service
+	s, err := sugar.NewServiceFromConfig()
 	if err != nil {
 		log.Println(err.Error())
 		return
 	}
 
-	// Define service
-	s := sugar.NewService(opts.Host, opts.Prefix, &sugar.ServiceOpts{
-		Pulls:       5,
-		PullTimeout: time.Hour,
-		MaxThreads:  10,
-	})
-
-	// Set methods
+	// A method that computes fibonacci
 	s.AddMethod("fib", func(task *nexus.Task) {
 		// Parse params
 		v, err := ei.N(task.Params).M("v").Int()
@@ -52,5 +39,8 @@ func main() {
 	})
 
 	// Serve
-	log.Fatalln(s.Serve())
+	err = s.Serve()
+	if err != nil {
+		log.Println(err.Error())
+	}
 }

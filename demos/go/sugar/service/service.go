@@ -2,6 +2,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -9,13 +10,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/xeipuuv/gojsonschema"
+
 	nxcli "github.com/jaracil/nxcli"
 	"github.com/jaracil/nxcli/demos/go/sugar/util"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
 type Service struct {
-	Url              string
+	Server           string
+	User             string
+	Password         string
 	Prefix           string
 	Pulls            int
 	PullTimeout      time.Duration
@@ -24,13 +29,20 @@ type Service struct {
 	StatsPeriod      time.Duration
 	GracefulExitTime time.Duration
 	nc               *nexus.NexusConn
-	methods          map[string]func(*nexus.Task)
-	handler          func(*nexus.Task)
+	methods          map[string]*Method
+	handler          *Method
 	stats            *Stats
 	stopServeCh      chan (bool)
 	threadsSem       *Semaphore
 	wg               *sync.WaitGroup
 	stopping         bool
+}
+
+type Method struct {
+	schemaSource    string
+	schema          interface{}
+	schemaValidator *gojsonschema.Schema
+	f               func(*nexus.Task)
 }
 
 type Stats struct {
@@ -48,25 +60,63 @@ func (s *Service) GetConn() *nexus.NexusConn {
 	return s.nc
 }
 
+func (s *Service) addMethod(name string, schema string, f func(*nexus.Task)) {
+	if s.methods == nil {
+		s.methods = map[string]*Method{}
+		s.methods["@schema"] = &Method{
+			schemaSource:    "",
+			schema:          nil,
+			schemaValidator: nil,
+			f: func(t *nexus.Task) {
+				r := map[string]interface{}{}
+				for name, m := range s.methods {
+					if m.schema != nil {
+						r[name] = m.schema
+					}
+				}
+				t.SendResult(r)
+			},
+		}
+	}
+	s.methods[name] = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: f}
+	if schema != "" {
+		s.methods[name].schemaSource = schema
+	}
+}
+
 // AddMethod adds (or replaces if already added) a method for the service
 // The function that receives the nexus.Task should SendError() or SendResult() with it
 func (s *Service) AddMethod(name string, f func(*nexus.Task)) {
-	if s.methods == nil {
-		s.methods = map[string]func(*nexus.Task){}
-	}
-	s.methods[name] = f
+	s.addMethod(name, "", f)
+}
+
+// AddSchemaMethod adds (or replaces if already added) a method for the service with a JSON schema
+// The function that receives the nexus.Task should SendError() or SendResult() with it
+// If the schema validation does not succeed, an ErrInvalidParams error will be sent as a result for the task
+func (s *Service) AddMethodSchema(name string, schema string, f func(*nexus.Task)) {
+	s.addMethod(name, schema, f)
 }
 
 // SetHandler sets the task handler for all methods, to allow custom parsing of the method
 // When a handler is set, methods added with AddMethod() have no effect
 // Passing a nil will remove the handler and turn back to methods from AddMethod()
 func (s *Service) SetHandler(h func(*nexus.Task)) {
-	s.handler = h
+	s.handler = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: h}
 }
 
 // SetUrl modifies the service url
 func (s *Service) SetUrl(url string) {
-	s.Url = url
+	s.Server = url
+}
+
+// SetUser modifies the service user
+func (s *Service) SetUser(user string) {
+	s.User = user
+}
+
+// SetPass modifies the service pass
+func (s *Service) SetPass(pass string) {
+	s.Password = pass
 }
 
 // SetPrefix modifies the service prefix
@@ -76,25 +126,16 @@ func (s *Service) SetPrefix(prefix string) {
 
 // SetPulls modifies the number of concurrent nexus.TaskPull calls
 func (s *Service) SetPulls(pulls int) {
-	if pulls <= 0 {
-		pulls = 1
-	}
 	s.Pulls = pulls
 }
 
 // SetMaxThreads modifies the number of maximum concurrent goroutines resolving nexus.Task
 func (s *Service) SetMaxThreads(maxThreads int) {
-	if maxThreads <= 0 {
-		maxThreads = 1
-	}
 	s.MaxThreads = maxThreads
 }
 
 // SetPullTimeout modifies the time to wait for a nexus.Task for each nexus.TaskPull call
 func (s *Service) SetPullTimeout(t time.Duration) {
-	if t < 0 {
-		t = 0
-	}
 	s.PullTimeout = t
 }
 
@@ -104,7 +145,7 @@ func (s *Service) SetDebugEnabled(t bool) {
 }
 
 // SetDebugStatsPeriod changes the period for the stats to be printed
-func (s *Service) SetDebugStatsPeriod(t time.Duration) {
+func (s *Service) SetStatsPeriod(t time.Duration) {
 	s.StatsPeriod = t
 }
 
@@ -152,17 +193,9 @@ func (s *Service) Serve() error {
 	}
 
 	// Parse url
-	parsed, err := url.Parse(s.Url)
+	_, err = url.Parse(s.Server)
 	if err != nil {
-		return fmt.Errorf("Invalid nexus url (%s): %s", s.Url, err.Error())
-	}
-	if parsed.User == nil {
-		return fmt.Errorf("Invalid nexus url (%s): user or pass not found", s.Url)
-	}
-	username := parsed.User.Username()
-	password, _ := parsed.User.Password()
-	if username == "" || password == "" {
-		return fmt.Errorf("Invalid nexus url (%s): user or pass is empty", s.Url)
+		return fmt.Errorf("Invalid nexus url (%s): %s", s.Server, err.Error())
 	}
 
 	// Check service
@@ -176,22 +209,44 @@ func (s *Service) Serve() error {
 		s.PullTimeout = 0
 	}
 	if s.StatsPeriod < time.Millisecond*100 {
-		s.StatsPeriod = time.Millisecond * 100
+		if s.StatsPeriod < 0 {
+			s.StatsPeriod = 0
+		} else {
+			s.StatsPeriod = time.Millisecond * 100
+		}
 	}
 	if s.GracefulExitTime <= time.Second {
 		s.GracefulExitTime = time.Second
 	}
 
+	// Check/create method schemas
+	if s.handler == nil {
+		for mname, m := range s.methods {
+			if m.schemaSource != "" {
+				var schres interface{}
+				err = json.Unmarshal([]byte(m.schemaSource), &schres)
+				if err != nil {
+					return fmt.Errorf("Error parsing method (%s) schema: %s", mname, err.Error())
+				}
+				m.schemaValidator, err = gojsonschema.NewSchema(gojsonschema.NewGoLoader(schres))
+				if err != nil {
+					return fmt.Errorf("Error on method (%s) schema: %s", mname, err.Error())
+				}
+				m.schema = schres
+			}
+		}
+	}
+
 	// Dial
-	s.nc, err = nxcli.Dial(s.Url, nxcli.NewDialOptions())
+	s.nc, err = nxcli.Dial(s.Server, nxcli.NewDialOptions())
 	if err != nil {
-		return fmt.Errorf("Can't connect to nexus server (%s): %s", s.Url, err.Error())
+		return fmt.Errorf("Can't connect to nexus server (%s): %s", s.Server, err.Error())
 	}
 
 	// Login
-	_, err = s.nc.Login(username, password)
+	_, err = s.nc.Login(s.User, s.Password)
 	if err != nil {
-		return fmt.Errorf("Can't login to nexus server (%s)", s.Url)
+		return fmt.Errorf("Can't login to nexus server (%s) as (%s): %s", s.Server, s.User, err.Error())
 	}
 
 	// Output
@@ -214,7 +269,10 @@ func (s *Service) Serve() error {
 	// Wait until the nexus connection ends
 	gracefulTimeout := &time.Timer{}
 	wgDoneCh := make(chan (bool), 1)
-	statsTicker := time.NewTicker(s.StatsPeriod)
+	var statsTicker *time.Ticker
+	if s.StatsPeriod > 0 {
+		statsTicker = time.NewTicker(s.StatsPeriod)
+	}
 	var graceful bool
 	for {
 		select {
@@ -270,18 +328,22 @@ func (s *Service) Serve() error {
 
 func (s *Service) taskPull(n int) {
 	for {
+		// Exit if stopping serve
 		if s.stopping {
 			return
 		}
+
+		// Make a task pull
 		s.threadsSem.Acquire()
 		atomic.AddUint64(&s.stats.taskPullsDone, 1)
 		task, err := s.nc.TaskPull(s.Prefix, s.PullTimeout)
 		if err != nil {
-			if util.IsNexusErrCode(err, nexus.ErrTimeout) {
+			if util.IsNexusErrCode(err, nexus.ErrTimeout) { // A timeout ocurred: pull again
 				atomic.AddUint64(&s.stats.taskPullTimeouts, 1)
 				s.threadsSem.Release()
 				continue
 			}
+			// An error ocurred: close the connection
 			if s.DebugEnabled {
 				log.Printf("Error pulling task on pull %d: %s\n", n, err.Error())
 			}
@@ -289,16 +351,19 @@ func (s *Service) taskPull(n int) {
 			s.threadsSem.Release()
 			return
 		}
+
+		// A task has been pulled
 		atomic.AddUint64(&s.stats.tasksPulled, 1)
 		if s.DebugEnabled {
 			log.Printf("PULL %d: task[ path=%s method=%s params=%+v tags=%+v ]\n", n, task.Path, task.Method, task.Params, task.Tags)
 		}
 
-		f := s.handler
-		if f == nil {
+		// Get method or global handler
+		m := s.handler
+		if m == nil {
 			var ok bool
-			f, ok = s.methods[task.Method]
-			if !ok {
+			m, ok = s.methods[task.Method]
+			if !ok { // Method not found
 				task.SendError(nexus.ErrMethodNotFound, "", nil)
 				atomic.AddUint64(&s.stats.tasksMethodNotFound, 1)
 				s.threadsSem.Release()
@@ -326,7 +391,31 @@ func (s *Service) taskPull(n int) {
 					task.SendError(nexus.ErrInternal, nerr.Error(), nil)
 				}
 			}()
-			f(task)
+
+			// Validate schema
+			if m.schema != nil {
+				result, err := m.schemaValidator.Validate(gojsonschema.NewGoLoader(task.Params))
+				if err != nil { // Error with schemas
+					task.SendError(nexus.ErrInvalidParams, fmt.Sprintf("json schema validation: %s", err.Error()), nil)
+				} else {
+					if result.Valid() { // Schema validated: execute task
+						m.f(task)
+					} else { // Schema validation error
+						out := "json schema validation: "
+						nerrs := len(result.Errors())
+						if nerrs == 1 {
+							out += fmt.Sprintf("%s", result.Errors()[0])
+						} else {
+							for _, desc := range result.Errors() {
+								out += fmt.Sprintf("\n- %s", desc)
+							}
+						}
+						task.SendError(nexus.ErrInvalidParams, out, nil)
+					}
+				}
+			} else { // No schema: execute task
+				m.f(task)
+			}
 			atomic.AddUint64(&s.stats.tasksServed, 1)
 		}()
 	}
@@ -347,5 +436,5 @@ func (s *Service) GetStats() *Stats {
 
 // String returns some service info as a stirng
 func (s *Service) String() string {
-	return fmt.Sprintf("SERVICE: config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d ]", s.Url, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads)
+	return fmt.Sprintf("SERVICE: config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads)
 }
