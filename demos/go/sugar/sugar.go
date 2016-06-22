@@ -1,4 +1,66 @@
-// Package sugar is boilerplate code to make writing services more sweet.
+/*	Package sugar is boilerplate code to make writing services more sweet.
+
+	`Config` allows to add flags (`AddFlags()`) to the ones defined by sugar itself.
+
+	Flags have a name (that is automatically lowered on definition) and optionally
+	a category, that will be used to find the flag in INI files, environment
+	variables and command-line flags.
+
+	Once the configuration is defined a call to `Parse()` will look for configuration
+	in the sources (by priority):
+
+		INI config file:
+
+			Flags in INI files are found with the category name (matching the INI section),
+			and the flag name (matching the INI variable name).
+
+			By default, `config.ini` in the working directory file path `.` will be
+			looked up. This can be changed with calls to `Config.SetFileName()` and
+			`Config.SetFilePaths()`.
+
+			By default, if no config file is found, no error will be thrown (if all
+			required flags have been defined). The exception to this is when a --config
+			option is given as a command line argument. In this case, if the file
+			is not found in any of the file paths, an error will be returned.
+
+		Environment variables:
+
+			Flags can be defined by environment variables (in uppercase) of the form:
+
+			`{ENV_PREFIX}_{SECTION}_{NAME}` or `{ENV_PREFIX}_{NAME}`.
+
+			The environment prefix is `NX` by default. This can be changed with a
+			call to `Config.SetEnvPrefix()`.
+
+		Command-line flags:
+
+			Flags in command line are looked up in one of the following forms:
+
+				`-{category}-{name} {value}`
+
+				`--{category}-{name} {value}`
+
+				`-{category}-{name}={value}`
+
+				`--{category}-{name}={value}`
+
+			Boolean flags without a value are considered to be true.
+
+			Short forms for the flags (one character) can be defined. The category
+			is not used when parsing short flags.
+
+		Default values as defined in-code:
+
+			A default value can be defined for each flag. If a flag has no value
+			in the configuration and no default value is given for it,
+			`Config.Parse()` will fail.
+
+
+	`Config` can be `Parse()`d explicitly or you can check the error of
+	`NewServiceFromConfig()` that parses the config if it hasn't been parsed
+	and returns any error from config parsing.
+*/
+
 package sugar
 
 import (
@@ -11,7 +73,11 @@ import (
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
-var Config struct {
+// Config is the configuration parser for the service
+var Config *config.Cfgo
+
+// ServiceConfig is the configuration for a service that is being parsed
+var ServiceConfig struct {
 	Server           string  `name:"server" short:"s" description:"Nexus [tcp|ssl|ws|wss]://host[:port]"`
 	User             string  `name:"user" short:"u" description:"Nexus username"`
 	Password         string  `name:"pass" short:"p" description:"Nexus password"`
@@ -24,61 +90,37 @@ var Config struct {
 	Debug            bool    `name:"debug" description:"Debug output enabled" default:"false"`
 }
 
-// AddConfig adds configuration flags to be parsed
-// Category allows to split flags in order to not collide
-// The second parameter expects a pointer to a struct with exported fields
-// Tags are supported for changing field *name*, adding a *description*,
-// a *short* form for the flag or a *default* value
-func AddConfig(category string, v interface{}) error {
-	if err := config.Config.AddConfig(category, v).Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// ParseConfig parses the flags defined with `AddConfig()`
-// in addition to the ones defined by sugar itsel.
-// The priority order is:
-//
-// - If the INI config file is found, values from the config file
-// - Environment variables
-// - Command-line flags
-// - Default values as defined in-code
-// - After-parse overrides
-//
-func ParseConfig() error {
-	if err := config.Config.AddConfig("", &Config).Err(); err != nil {
-		return err
-
-	}
-	if err := config.Config.Parse(); err != nil {
-		return err
-	}
-	return nil
+func init() {
+	Config = config.New()
+	Config.SetEnvPrefix("NX")
+	Config.SetFilePaths(".")
+	Config.SetFileName("config.ini")
+	Config.AddFlags("", &ServiceConfig)
 }
 
 // NewService creates a new nexus service from config
-// If the config hasn't been parsed, it will be automatically parsed
+// If the config hasn't been parsed, it will be automatically parsed and return
+// any error
 func NewServiceFromConfig() (*service.Service, error) {
-	if !config.Config.Parsed() {
-		if err := ParseConfig(); err != nil {
+	if !Config.Parsed() {
+		if err := Config.Parse(); err != nil {
 			return nil, err
 		}
 	}
-	if Config.MaxThreads == -1 {
-		Config.MaxThreads = runtime.NumCPU()
+	if ServiceConfig.MaxThreads == -1 {
+		ServiceConfig.MaxThreads = runtime.NumCPU()
 	}
 	return &service.Service{
-		Server:           Config.Server,
-		User:             Config.User,
-		Password:         Config.Password,
-		Prefix:           Config.Prefix,
-		Pulls:            Config.Pulls,
-		PullTimeout:      time.Second * time.Duration(Config.PullTimeout),
-		MaxThreads:       Config.MaxThreads,
-		DebugEnabled:     Config.Debug,
-		StatsPeriod:      time.Second * time.Duration(Config.StatsPeriod),
-		GracefulExitTime: time.Second * time.Duration(Config.GracefulExitTime),
+		Server:           ServiceConfig.Server,
+		User:             ServiceConfig.User,
+		Password:         ServiceConfig.Password,
+		Prefix:           ServiceConfig.Prefix,
+		Pulls:            ServiceConfig.Pulls,
+		PullTimeout:      time.Second * time.Duration(ServiceConfig.PullTimeout),
+		MaxThreads:       ServiceConfig.MaxThreads,
+		DebugEnabled:     ServiceConfig.Debug,
+		StatsPeriod:      time.Second * time.Duration(ServiceConfig.StatsPeriod),
+		GracefulExitTime: time.Second * time.Duration(ServiceConfig.GracefulExitTime),
 	}, nil
 }
 

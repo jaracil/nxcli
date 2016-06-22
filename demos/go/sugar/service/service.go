@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -251,7 +253,7 @@ func (s *Service) Serve() error {
 
 	// Output
 	if s.DebugEnabled {
-		log.Println(s)
+		log.Printf("SERVICE: %s\n", s)
 	}
 
 	// Serve
@@ -265,6 +267,22 @@ func (s *Service) Serve() error {
 	for i := 1; i < s.Pulls+1; i++ {
 		go s.taskPull(i)
 	}
+
+	// Wait for signals
+	go func() {
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, os.Interrupt)
+		<-signalChan
+		if s.DebugEnabled {
+			log.Printf("SIGNAL: Received Ctrl+C: Stop gracefuly\n")
+		}
+		s.GracefulStop()
+		<-signalChan
+		if s.DebugEnabled {
+			log.Printf("SIGNAL: Received Ctrl+C again: Stop\n")
+		}
+		s.Stop()
+	}()
 
 	// Wait until the nexus connection ends
 	gracefulTimeout := &time.Timer{}
@@ -282,15 +300,13 @@ func (s *Service) Serve() error {
 				log.Printf("STATS: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]\n", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
 			}
 		case graceful = <-s.stopServeCh: // Someone called Stop() or GracefulStop()
-			if !s.stopping {
+			if !graceful {
+				s.nc.Close()
+				gracefulTimeout = time.NewTimer(time.Second)
 				s.stopping = true
-				// Stop()
-				if !graceful {
-					s.nc.Close()
-					gracefulTimeout = time.NewTimer(time.Second)
-					continue
-				}
-				// GracefulStop()
+				continue
+			} else if !s.stopping {
+				s.stopping = true
 				gracefulTimeout = time.NewTimer(s.GracefulExitTime)
 				go func() {
 					s.wg.Wait()
@@ -302,25 +318,28 @@ func (s *Service) Serve() error {
 			continue
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
+				if s.DebugEnabled {
+					log.Printf("STOP: done\n")
+				}
 				return nil
 			}
 			s.nc.Close()
-			return fmt.Errorf("Graceful stop: timeout after %s\n", s.GracefulExitTime.String())
+			return fmt.Errorf("GRACEFUL: timeout after %s\n", s.GracefulExitTime.String())
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.stopping {
 				if s.DebugEnabled {
 					if graceful {
-						log.Printf("Stopped gracefully")
+						log.Printf("GRACEFUL: done\n")
 					} else {
-						log.Printf("Stopped")
+						log.Printf("STOP: done\n")
 					}
 				}
 				return nil
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				return fmt.Errorf("Nexus connection ended: stopped serving: %s", ctxErr.Error())
+				return fmt.Errorf("STOP: Nexus connection ended: %s", ctxErr.Error())
 			}
-			return fmt.Errorf("Nexus connection ended: stopped serving")
+			return fmt.Errorf("STOP: Nexus connection ended: stopped serving")
 		}
 	}
 	return nil
@@ -345,7 +364,7 @@ func (s *Service) taskPull(n int) {
 			}
 			// An error ocurred: close the connection
 			if s.DebugEnabled {
-				log.Printf("Error pulling task on pull %d: %s\n", n, err.Error())
+				log.Printf("PULL %d: Error pulling task: %s\n", n, err.Error())
 			}
 			s.nc.Close()
 			s.threadsSem.Release()
@@ -387,7 +406,7 @@ func (s *Service) taskPull(n int) {
 					if !ok {
 						nerr = fmt.Errorf("pkg: %v", r)
 					}
-					log.Printf("Panic serving task on pull %d: %s", n, nerr.Error())
+					log.Printf("PULL %d: Panic serving task: %s", n, nerr.Error())
 					task.SendError(nexus.ErrInternal, nerr.Error(), nil)
 				}
 			}()
@@ -436,5 +455,5 @@ func (s *Service) GetStats() *Stats {
 
 // String returns some service info as a stirng
 func (s *Service) String() string {
-	return fmt.Sprintf("SERVICE: config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads)
+	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads)
 }
