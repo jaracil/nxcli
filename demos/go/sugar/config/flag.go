@@ -41,23 +41,27 @@ func (f *Flag) CmdName() string {
 func (f *Flag) PrintUsage() {
 	s := ""
 	if f.Short != "" {
-		s = fmt.Sprintf("  -%s, --%s", f.Short, f.Name)
+		s = fmt.Sprintf("  -%s, --%s=", f.Short, f.Name)
 	} else {
-		s = fmt.Sprintf("  --%s", f.Name)
+		s = fmt.Sprintf("  --%s=", f.Name)
 	}
+	ty := f.Value.Kind().String()
 	if f.Default != nil {
-		ty := f.Value.Kind().String()
 		if ty == "string" {
-			s += fmt.Sprintf("=%q", f.Default.Value)
+			s += fmt.Sprintf("%q", f.Default.Value)
 		} else {
 			if ty == "float64" {
 				ty = "float"
 			}
-			s += fmt.Sprintf("=%s", f.Default.Value)
+			s += fmt.Sprintf("%s", f.Default.Value)
 		}
 	}
-	s += fmt.Sprintf(" (%s)\n    \t%s\n", f.Value.Kind().String(), f.Description)
-	fmt.Fprint(os.Stderr, s, "\n")
+	if f.Value.IsValid() {
+		s += fmt.Sprintf(" (%s)\n    \t%s\n", ty, f.Description)
+	} else {
+		s += fmt.Sprintf("\n    \t%s\n", f.Description)
+	}
+	fmt.Fprint(os.Stderr, s)
 }
 
 func (f *Flag) init() error {

@@ -27,7 +27,7 @@
 
 			Flags can be defined by environment variables (in uppercase) of the form:
 
-			`{ENV_PREFIX}_{SECTION}_{NAME}` or `{ENV_PREFIX}_{NAME}`.
+			`{ENV_PREFIX}_{CATEGORY}_{NAME}` or `{ENV_PREFIX}_{NAME}`.
 
 			The environment prefix is `NX` by default. This can be changed with a
 			call to `Config.SetEnvPrefix()`.
@@ -36,18 +36,16 @@
 
 			Flags in command line are looked up in one of the following forms:
 
-				`-{category}-{name} {value}`
-
 				`--{category}-{name} {value}`
-
-				`-{category}-{name}={value}`
 
 				`--{category}-{name}={value}`
 
 			Boolean flags without a value are considered to be true.
 
 			Short forms for the flags (one character) can be defined. The category
-			is not used when parsing short flags.
+			is not used when parsing short flags. Short bool flags can be combined:
+
+				`-a=hello -b -c bye -d` is equivalent to `--category-long-name-of-a=hello -c="bye" -bd`
 
 		Default values as defined in-code:
 

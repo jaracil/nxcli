@@ -260,7 +260,7 @@ func (c *Cfgo) Parse() error {
 
 	// Init flags
 	if !c.init {
-		flag.String("config", "", "Path to configuration file")
+		flag.String("config", "config.ini", "Use the configuration file provided")
 		for _, c := range c.flags {
 			for _, f := range c {
 				f.init()
@@ -422,6 +422,14 @@ func (c *Cfgo) setConfigPathFromCmd() {
 
 func (c *Cfgo) printUsage() {
 	fmt.Fprintf(os.Stderr, "usage: %s [<flags>]\n\n", c.Name)
+	cf := &Flag{
+		Name:        "config",
+		Category:    "",
+		Description: "Use the configuration file provided",
+	}
+	fmt.Fprintf(os.Stderr, "config sources:\n")
+	cf.PrintUsage()
+	fmt.Fprintf(os.Stderr, "\nflags:\n")
 	for _, fn := range c.flagOrder[""] {
 		c.flags[""][fn].PrintUsage()
 	}
