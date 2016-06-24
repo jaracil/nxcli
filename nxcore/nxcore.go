@@ -118,6 +118,11 @@ type Task struct {
 	Tags   map[string]interface{}
 }
 
+// TaskOpts represents task push options.
+type TaskOpts struct {
+	Priority int // Task priority default 0 (Set negative value for lower priority)
+}
+
 // Pipe represents a pipe.
 // Pipes can only be read from the connection that created them and
 // can be written from any conection.
@@ -136,14 +141,14 @@ type Msg struct {
 
 // PipeData represents a pipe messages group obtained in read ops.
 type PipeData struct {
-	Msgs    []*Msg `json:"Msgs"`    // Messages
-	Waiting int    `json:"Waiting"` // Number of messages waiting in Nexus server since last read
-	Drops   int    `json:"Drops"`   // Number of messages dropped (pipe overflows) since last read
+	Msgs    []*Msg // Messages
+	Waiting int    // Number of messages waiting in Nexus server since last read
+	Drops   int    // Number of messages dropped (pipe overflows) since last read
 }
 
 // PipeOpts represents pipe creation options
 type PipeOpts struct {
-	Length int `json:"len,omitempty"` // Pipe buffer capacity
+	Length int // Pipe buffer capacity
 }
 
 // NewNexusConn creates new nexus connection from net.conn
@@ -359,12 +364,18 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 // TaskPush pushes a task to Nexus cloud.
 // method is the method path Ex. "test.fibonacci.fib"
 // params is the method params object.
-// timeout is the maximum time waiting for response.
+// timeout is the maximum time waiting for response, 0 = no timeout.
+// options (see TaskOpts struct)
 // Returns the task result or error.
-func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Duration) (interface{}, error) {
-	par := map[string]interface{}{
+func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Duration, opts ...*TaskOpts) (interface{}, error) {
+	par := ei.M{
 		"method": method,
 		"params": params,
+	}
+	if len(opts) > 0 {
+		if opts[0].Priority != 0 {
+			par["prio"] = opts[0].Priority
+		}
 	}
 	if timeout > 0 {
 		par["timeout"] = float64(timeout) / float64(time.Second)
@@ -462,11 +473,14 @@ func (nc *NexusConn) PipeOpen(pipeId string) (*Pipe, error) {
 
 // PipeCreate creates a new pipe.
 // Returns the new pipe object or error.
-func (nc *NexusConn) PipeCreate(opts *PipeOpts) (*Pipe, error) {
-	if opts == nil {
-		opts = &PipeOpts{}
+func (nc *NexusConn) PipeCreate(opts ...*PipeOpts) (*Pipe, error) {
+	par := ei.M{}
+	if len(opts) > 0 {
+		if opts[0].Length > 0 {
+			par["len"] = opts[0].Length
+		}
 	}
-	res, err := nc.Exec("pipe.create", opts)
+	res, err := nc.Exec("pipe.create", par)
 	if err != nil {
 		return nil, err
 	}
