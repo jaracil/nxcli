@@ -1,10 +1,10 @@
 // Package sugar is boilerplate code to make writing services more sweet.
+
 package sugar
 
 import (
+	"net/url"
 	"time"
-
-	"runtime"
 
 	"github.com/jaracil/nxcli/demos/go/sugar/service"
 	nexus "github.com/jaracil/nxcli/nxcore"
@@ -19,9 +19,16 @@ type ServiceOpts struct {
 // NewService creates a new nexus service
 // If passed ServiceOpts is nil the defaults are 1 pull, an hour of pullTimeout and runtime.NumCPU() maxThreads
 // Debug output is disabled by deafult
-// StatsPeriod defaults to 30 seconds
+// StatsPeriod defaults to 5 minutes
 // GracefulExitTime defaults to 20 seconds
 func NewService(url string, prefix string, opts *ServiceOpts) *service.Service {
+	var username string
+	var password string
+	parsed, err := url.Parse(s.Url)
+	if err == nil && parsed.User != nil {
+		username = parsed.User.Username()
+		password = parsed.User.Password()
+	}
 	if opts == nil {
 		opts = &ServiceOpts{
 			Pulls:       1,
@@ -38,7 +45,7 @@ func NewService(url string, prefix string, opts *ServiceOpts) *service.Service {
 	if opts.MaxThreads <= 0 {
 		opts.MaxThreads = 1
 	}
-	return &service.Service{Url: url, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, DebugEnabled: false, StatsPeriod: time.Second * 30, GracefulExitTime: time.Second * 20}
+	return &service.Service{Url: url, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, DebugEnabled: false, StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
 }
 
 // IsNexusErr eturns wheter the err is a *nexus.JsonRpcErr
