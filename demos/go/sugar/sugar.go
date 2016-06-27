@@ -4,6 +4,8 @@ package sugar
 
 import (
 	"net/url"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/jaracil/nxcli/demos/go/sugar/service"
@@ -21,13 +23,16 @@ type ServiceOpts struct {
 // Debug output is disabled by deafult
 // StatsPeriod defaults to 5 minutes
 // GracefulExitTime defaults to 20 seconds
-func NewService(url string, prefix string, opts *ServiceOpts) *service.Service {
+func NewService(server string, prefix string, opts *ServiceOpts) *service.Service {
 	var username string
 	var password string
-	parsed, err := url.Parse(s.Url)
+	if !strings.Contains(server, "://") {
+		server = "tcp://" + server
+	}
+	parsed, err := url.Parse(server)
 	if err == nil && parsed.User != nil {
 		username = parsed.User.Username()
-		password = parsed.User.Password()
+		password, _ = parsed.User.Password()
 	}
 	if opts == nil {
 		opts = &ServiceOpts{
@@ -45,7 +50,7 @@ func NewService(url string, prefix string, opts *ServiceOpts) *service.Service {
 	if opts.MaxThreads <= 0 {
 		opts.MaxThreads = 1
 	}
-	return &service.Service{Url: url, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, DebugEnabled: false, StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
+	return &service.Service{Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, DebugEnabled: false, StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
 }
 
 // IsNexusErr eturns wheter the err is a *nexus.JsonRpcErr
