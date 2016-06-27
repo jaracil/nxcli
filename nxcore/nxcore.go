@@ -383,6 +383,27 @@ func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Du
 	return nc.Exec("task.push", par)
 }
 
+// TaskPushCh pushes a task to Nexus cloud.
+// method is the method path Ex. "test.fibonacci.fib"
+// params is the method params object.
+// timeout is the maximum time waiting for response, 0 = no timeout.
+// options (see TaskOpts struct)
+// Returns two channels (one for result of interface{} type and one for error of error type).
+func (nc *NexusConn) TaskPushCh(method string, params interface{}, timeout time.Duration, opts ...*TaskOpts) (<-chan interface{}, <-chan error) {
+	chres := make(chan interface{}, 1)
+	cherr := make(chan error, 1)
+	go func() {
+		res, err := nc.TaskPush(method, params, timeout, opts...)
+		if err != nil {
+			cherr <- err
+		} else {
+			chres <- res
+		}
+
+	}()
+	return chres, cherr
+}
+
 // TaskPull pulls a task from Nexus cloud.
 // prefix is the method prefix we want pull Ex. "test.fibonacci"
 // timeout is the maximum time waiting for a task.
