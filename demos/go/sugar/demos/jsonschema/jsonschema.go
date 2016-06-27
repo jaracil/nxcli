@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/jaracil/nxcli/demos/go/sugar"
+	"github.com/jaracil/nxcli/demos/go/sugar/config"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
@@ -14,8 +14,8 @@ var MyOpts struct {
 
 func main() {
 	// Config
-	sugar.Config.AddFlags("myopts", &MyOpts)
-	err := sugar.Config.Parse()
+	config.Config.AddFlags("myopts", &MyOpts)
+	err := config.Config.Parse()
 	if err != nil {
 		log.Println(err.Error())
 		return
@@ -26,7 +26,7 @@ func main() {
 	log.Printf("My opts: %+v\n", MyOpts)
 
 	// Service
-	s, err := sugar.NewServiceFromConfig()
+	s, err := config.NewService()
 	if err != nil {
 		log.Println(err.Error())
 		return
