@@ -120,7 +120,11 @@ type Task struct {
 
 // TaskOpts represents task push options.
 type TaskOpts struct {
-	Priority int // Task priority default 0 (Set negative value for lower priority)
+	// Task priority default 0 (Set negative value for lower priority)
+	Priority int
+	// Task detach. If true, task is detached from creating session.
+	// If task is detached and creating session deads, task is not removed from tasks queue.
+	Detach bool
 }
 
 // Pipe represents a pipe.
@@ -375,6 +379,9 @@ func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Du
 	if len(opts) > 0 {
 		if opts[0].Priority != 0 {
 			par["prio"] = opts[0].Priority
+		}
+		if opts[0].Detach {
+			par["detach"] = true
 		}
 	}
 	if timeout > 0 {
@@ -678,4 +685,21 @@ func (t *Task) SendError(code int, message string, data interface{}) (interface{
 		"data":    data,
 	}
 	return t.nc.Exec("task.error", par)
+}
+
+// Reject rejects the task. Task is returned to Nexus tasks queue.
+func (t *Task) Reject() (interface{}, error) {
+	par := map[string]interface{}{
+		"taskid": t.taskId,
+	}
+	return t.nc.Exec("task.reject", par)
+}
+
+// Accept accepts a detached task. Is an alias for SendResult(nil).
+func (t *Task) Accept() (interface{}, error) {
+	par := map[string]interface{}{
+		"taskid": t.taskId,
+		"result": nil,
+	}
+	return t.nc.Exec("task.result", par)
 }
