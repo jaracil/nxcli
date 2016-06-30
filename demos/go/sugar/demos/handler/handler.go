@@ -1,9 +1,8 @@
 package main
 
 import (
-	"log"
-
 	"github.com/jaracil/nxcli/demos/go/sugar/config"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
@@ -11,7 +10,7 @@ func main() {
 	// Service
 	s, err := config.NewService()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 		return
 	}
 
@@ -27,6 +26,6 @@ func main() {
 	// Serve
 	err = s.Serve()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 	}
 }

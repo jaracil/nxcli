@@ -279,6 +279,21 @@ func AddFlags(category string, config interface{}) {
 					}
 				}
 			}
+			if category != "" {
+				if _, ok := Config.flags[""][category+"-"+nname]; ok {
+					Config.err = fmt.Errorf("%s: flag (%s) in category (%s) collides with flag (%s-%s) in default category", errs, nname, category, category, name)
+					return
+				}
+			} else {
+				spl := strings.SplitN(nname, "-", 2)
+				if len(spl) == 2 {
+					if catf, ok := Config.flags[spl[0]]; ok {
+						if _, ok := catf[spl[1]]; ok {
+							Config.err = fmt.Errorf("%s: flag (%s) in default category collides with flag (%s) in category (%s)", errs, nname, category, spl[1], spl[0])
+						}
+					}
+				}
+			}
 			if _, ok := cat[nname]; ok {
 				Config.err = fmt.Errorf("%s: flag (%s) is already defined", errs, nname)
 				if category != "" {
@@ -402,21 +417,16 @@ func Parse() error {
 
 func setFromDefaults() error {
 	flag.Visit(func(f *flag.Flag) {
-		if len(f.Name) == 1 {
-			if fl, ok := Config.shorts[f.Name]; ok && fl.Short == f.Name {
-				fl.hasBeenSet = true
-			}
-		}
-		spl := strings.SplitN(f.Name, "-", 2)
-		if len(spl) == 2 {
-			if category, ok := Config.flags[spl[0]]; ok {
-				if fl, ok := category[spl[1]]; ok {
-					fl.hasBeenSet = true
-				}
-			}
+		if fl, ok := Config.flags[""][f.Name]; ok {
+			fl.hasBeenSet = true
 		} else {
-			if fl, ok := Config.flags[""][f.Name]; ok {
-				fl.hasBeenSet = true
+			spl := strings.SplitN(f.Name, "-", 2)
+			if len(spl) == 2 {
+				if category, ok := Config.flags[spl[0]]; ok {
+					if fl, ok := category[spl[1]]; ok {
+						fl.hasBeenSet = true
+					}
+				}
 			}
 		}
 	})

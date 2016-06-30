@@ -1,11 +1,11 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	"github.com/jaracil/ei"
 	"github.com/jaracil/nxcli/demos/go/sugar"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
@@ -13,6 +13,7 @@ func main() {
 	// Service
 	s := sugar.NewService("test:test@nexus.n4m.zone", "test.sugar.fibsrv", &sugar.ServiceOpts{4, time.Hour, 12})
 	s.SetLogLevel("debug")
+	s.SetStatsPeriod(time.Second * 5)
 
 	// A method that computes fibonacci
 	s.AddMethod("fib", func(task *nexus.Task) {
@@ -38,6 +39,6 @@ func main() {
 	// Serve
 	err := s.Serve()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 	}
 }

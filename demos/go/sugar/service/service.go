@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -144,8 +145,12 @@ func (s *Service) SetPullTimeout(t time.Duration) {
 
 // SetLogLevel sets the log level
 func (s *Service) SetLogLevel(t string) {
+	t = strings.ToLower(t)
 	SetLogLevel(t)
-	s.debugEnabled = uint8(Log.Level) == DebugLevel
+	if Log.Level.String() == t {
+		s.LogLevel = t
+		s.debugEnabled = t == "debug"
+	}
 }
 
 // SetStatsPeriod changes the period for the stats to be printed
@@ -446,5 +451,5 @@ func (s *Service) GetStats() *Stats {
 
 // String returns some service info as a stirng
 func (s *Service) String() string {
-	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads)
+	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
 }
