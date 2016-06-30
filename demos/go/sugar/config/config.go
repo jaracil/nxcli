@@ -119,7 +119,7 @@ var ServiceConfig struct {
 	Pulls            int     `name:"pulls" description:"Number of concurrent nexus task pulls" default:"1"`
 	PullTimeout      float64 `name:"pull-timeout" description:"Timeout for a nexus task to be pulled" default:"3600"`
 	MaxThreads       int     `name:"max-threads" description:"Maximum number of threads running concurrently" default:"-1"`
-	StatsPeriod      float64 `name:"stat-speriod" description:"Period in seconds for the service stats to be printed if debug is enabled" default:"300"`
+	StatsPeriod      float64 `name:"stats-period" description:"Period in seconds for the service stats to be printed if debug is enabled" default:"300"`
 	GracefulExitTime float64 `name:"graceful-exit" description:"Timeout for a graceful exit" default:"20"`
 	LogLevel         string  `name:"log-level" description:"Log level (debug, info, warn, error, fatal, panic)" default:"info"`
 }
@@ -167,11 +167,11 @@ func NewService() (*service.Service, error) {
 		Password:         ServiceConfig.Password,
 		Prefix:           ServiceConfig.Prefix,
 		Pulls:            ServiceConfig.Pulls,
-		PullTimeout:      time.Second * time.Duration(ServiceConfig.PullTimeout),
+		PullTimeout:      time.Duration(float64(time.Second) * ServiceConfig.PullTimeout),
 		MaxThreads:       ServiceConfig.MaxThreads,
 		LogLevel:         ServiceConfig.LogLevel,
-		StatsPeriod:      time.Second * time.Duration(ServiceConfig.StatsPeriod),
-		GracefulExitTime: time.Second * time.Duration(ServiceConfig.GracefulExitTime),
+		StatsPeriod:      time.Duration(float64(time.Second) * ServiceConfig.StatsPeriod),
+		GracefulExitTime: time.Duration(float64(time.Second) * ServiceConfig.GracefulExitTime),
 	}, nil
 }
 

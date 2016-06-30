@@ -191,6 +191,9 @@ func (s *Service) Stop() {
 func (s *Service) Serve() error {
 	var err error
 
+	// Set log level
+	s.SetLogLevel(s.LogLevel)
+
 	// Return an error if no methods where added
 	if s.methods == nil && s.handler == nil {
 		return fmt.Errorf("service: no methods to serve")
