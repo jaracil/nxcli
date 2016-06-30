@@ -117,49 +117,15 @@ var ServiceConfig struct {
 	Password         string  `name:"pass" short:"p" description:"Nexus password"`
 	Prefix           string  `name:"prefix" description:"Nexus listen prefix"`
 	Pulls            int     `name:"pulls" description:"Number of concurrent nexus task pulls" default:"1"`
-	PullTimeout      float64 `name:"pulltimeout" description:"Timeout for a nexus task to be pulled" default:"3600"`
-	MaxThreads       int     `name:"maxthreads" description:"Maximum number of threads running concurrently" default:"-1"`
-	StatsPeriod      float64 `name:"statsperiod" description:"Period in seconds for the service stats to be printed if debug is enabled" default:"300"`
-	GracefulExitTime float64 `name:"gracefulexit" description:"Timeout for a graceful exit" default:"20"`
-	Debug            bool    `name:"debug" description:"Debug output enabled" default:"false"`
+	PullTimeout      float64 `name:"pull-timeout" description:"Timeout for a nexus task to be pulled" default:"3600"`
+	MaxThreads       int     `name:"max-threads" description:"Maximum number of threads running concurrently" default:"-1"`
+	StatsPeriod      float64 `name:"stat-speriod" description:"Period in seconds for the service stats to be printed if debug is enabled" default:"300"`
+	GracefulExitTime float64 `name:"graceful-exit" description:"Timeout for a graceful exit" default:"20"`
+	LogLevel         string  `name:"log-level" description:"Log level (debug, info, warn, error, fatal, panic)" default:"info"`
 }
 
 func init() {
-	Config = New()
-	Config.SetEnvPrefix("NX")
-	Config.SetFilePaths(".")
-	Config.SetFileName("config.ini")
-	Config.AddFlags("", &ServiceConfig)
-}
-
-// NewService creates a new nexus service from config
-// If the config hasn't been parsed, it will be automatically parsed and return
-// any error
-func NewService() (*service.Service, error) {
-	if !Config.Parsed() {
-		if err := Config.Parse(); err != nil {
-			return nil, err
-		}
-	}
-	if ServiceConfig.MaxThreads == -1 {
-		ServiceConfig.MaxThreads = runtime.NumCPU()
-	}
-	return &service.Service{
-		Server:           ServiceConfig.Server,
-		User:             ServiceConfig.User,
-		Password:         ServiceConfig.Password,
-		Prefix:           ServiceConfig.Prefix,
-		Pulls:            ServiceConfig.Pulls,
-		PullTimeout:      time.Second * time.Duration(ServiceConfig.PullTimeout),
-		MaxThreads:       ServiceConfig.MaxThreads,
-		DebugEnabled:     ServiceConfig.Debug,
-		StatsPeriod:      time.Second * time.Duration(ServiceConfig.StatsPeriod),
-		GracefulExitTime: time.Second * time.Duration(ServiceConfig.GracefulExitTime),
-	}, nil
-}
-
-func New() *Cfgo {
-	c := &Cfgo{
+	Config = &Cfgo{
 		Name:      os.Args[0],
 		EnvPrefix: "",
 		FileName:  "config.ini",
@@ -176,40 +142,68 @@ func New() *Cfgo {
 		parsed:      false,
 		iniRequired: false,
 	}
-	flag.Usage = c.printUsage
-	return c
-	//flag.Usage = func() {} // Help output, tweak here
+	SetEnvPrefix("NX")
+	SetFilePaths(".")
+	SetFileName("config.ini")
+	AddFlags("", &ServiceConfig)
+	flag.Usage = printUsage
 }
 
-func (c *Cfgo) SetEnvPrefix(prefix string) {
-	c.EnvPrefix = strings.ToUpper(prefix) + "_"
+// NewService creates a new nexus service from config
+// If the config hasn't been parsed, it will be automatically parsed and return
+// any error
+func NewService() (*service.Service, error) {
+	if !Parsed() {
+		if err := Parse(); err != nil {
+			return nil, err
+		}
+	}
+	if ServiceConfig.MaxThreads == -1 {
+		ServiceConfig.MaxThreads = runtime.NumCPU()
+	}
+	return &service.Service{
+		Server:           ServiceConfig.Server,
+		User:             ServiceConfig.User,
+		Password:         ServiceConfig.Password,
+		Prefix:           ServiceConfig.Prefix,
+		Pulls:            ServiceConfig.Pulls,
+		PullTimeout:      time.Second * time.Duration(ServiceConfig.PullTimeout),
+		MaxThreads:       ServiceConfig.MaxThreads,
+		LogLevel:         ServiceConfig.LogLevel,
+		StatsPeriod:      time.Second * time.Duration(ServiceConfig.StatsPeriod),
+		GracefulExitTime: time.Second * time.Duration(ServiceConfig.GracefulExitTime),
+	}, nil
 }
 
-func (c *Cfgo) SetFileName(name string) {
-	c.FileName = name
+func SetEnvPrefix(prefix string) {
+	Config.EnvPrefix = strings.ToUpper(prefix) + "_"
 }
 
-func (c *Cfgo) SetAppName(name string) {
-	c.Name = name
+func SetFileName(name string) {
+	Config.FileName = name
 }
 
-func (c *Cfgo) SetFilePaths(paths ...string) {
-	c.FilePaths = []string{}
+func SetAppName(name string) {
+	Config.Name = name
+}
+
+func SetFilePaths(paths ...string) {
+	Config.FilePaths = []string{}
 	for _, p := range paths {
-		c.FilePaths = append(c.FilePaths, path.Clean(p))
+		Config.FilePaths = append(Config.FilePaths, path.Clean(p))
 	}
 }
 
-func (c *Cfgo) Parsed() bool {
-	return c.parsed
+func Parsed() bool {
+	return Config.parsed
 }
 
-func (c *Cfgo) Err() error {
-	return c.err
+func Err() error {
+	return Config.err
 }
 
-func (c *Cfgo) AddFlags(category string, config interface{}) {
-	if c.err != nil {
+func AddFlags(category string, config interface{}) {
+	if Config.err != nil {
 		return
 	}
 
@@ -220,39 +214,39 @@ func (c *Cfgo) AddFlags(category string, config interface{}) {
 			var ok bool
 			nerr, ok := r.(error)
 			if !ok {
-				c.err = fmt.Errorf("%s: pkg: %v", errs, r)
+				Config.err = fmt.Errorf("%s: pkg: %v", errs, r)
 			} else {
-				c.err = fmt.Errorf("%s: %s", errs, nerr.Error())
+				Config.err = fmt.Errorf("%s: %s", errs, nerr.Error())
 			}
 		}
 	}()
 
-	if c.init {
-		c.err = fmt.Errorf("%s: cannot AddFlags() after a call to Parse()", errs)
+	if Config.init {
+		Config.err = fmt.Errorf("%s: cannot AddFlags() after a call to Parse()", errs)
 		return
 	}
 
 	// Check pointer
 	pval := reflect.ValueOf(config)
 	if pval.Type().Kind() != reflect.Ptr {
-		c.err = fmt.Errorf("%s: expecting pointer to a struct, got %s", errs, pval.Type().Kind().String())
+		Config.err = fmt.Errorf("%s: expecting pointer to a struct, got %s", errs, pval.Type().Kind().String())
 		return
 	}
 
 	// Check struct
 	sval := pval.Elem()
 	if sval.Type().Kind() != reflect.Struct {
-		c.err = fmt.Errorf("%s: expecting pointer to a struct, got %s", errs, sval.Type().Kind().String())
+		Config.err = fmt.Errorf("%s: expecting pointer to a struct, got %s", errs, sval.Type().Kind().String())
 		return
 	}
 
 	// Add category if missing
 	category = strings.ToLower(category)
-	cat, ok := c.flags[category]
+	cat, ok := Config.flags[category]
 	if !ok {
-		c.flags[category] = map[string]*Flag{}
-		c.flagOrder[category] = []string{}
-		cat = c.flags[category]
+		Config.flags[category] = map[string]*Flag{}
+		Config.flagOrder[category] = []string{}
+		cat = Config.flags[category]
 	}
 
 	// For each field of the struct
@@ -275,25 +269,25 @@ func (c *Cfgo) AddFlags(category string, config interface{}) {
 			short := strings.TrimSpace(strings.ToLower(tag.Get("short")))
 			if short != "" {
 				if len(short) != 1 {
-					c.err = fmt.Errorf("%s: flag (%s) short form must be only one character length: got '%s'", errs, nname, short)
+					Config.err = fmt.Errorf("%s: flag (%s) short form must be only one character length: got '%s'", errs, nname, short)
 					return
 				}
-				if _, ok := c.shorts[short]; ok {
-					c.err = fmt.Errorf("%s: flag (%s) short mode (%s) is already defined", errs, nname, short)
+				if _, ok := Config.shorts[short]; ok {
+					Config.err = fmt.Errorf("%s: flag (%s) short mode (%s) is already defined", errs, nname, short)
 					if category != "" {
-						c.err = fmt.Errorf("%s in category (%s)", c.err.Error(), category)
+						Config.err = fmt.Errorf("%s in category (%s)", Config.err.Error(), category)
 					}
 				}
 			}
 			if _, ok := cat[nname]; ok {
-				c.err = fmt.Errorf("%s: flag (%s) is already defined", errs, nname)
+				Config.err = fmt.Errorf("%s: flag (%s) is already defined", errs, nname)
 				if category != "" {
-					c.err = fmt.Errorf("%s in category (%s)", c.err.Error(), category)
+					Config.err = fmt.Errorf("%s in category (%s)", Config.err.Error(), category)
 				}
 				return
 			}
 			flag := &Flag{
-				cfgo:        c,
+				cfgo:        Config,
 				Name:        nname,
 				Short:       short,
 				Category:    category,
@@ -310,26 +304,26 @@ func (c *Cfgo) AddFlags(category string, config interface{}) {
 				case reflect.Int, reflect.Int64:
 					_, perr := strconv.Atoi(defStr)
 					if perr != nil {
-						c.err = fmt.Errorf("%s: invalid default value '%s' on (%s) field: %s", errs, defStr, name, perr.Error())
+						Config.err = fmt.Errorf("%s: invalid default value '%s' on (%s) field: %s", errs, defStr, name, perr.Error())
 						return
 					}
 					flag.Default = &DefaultValue{defStr}
 				case reflect.Float64:
 					_, perr := strconv.ParseFloat(defStr, 64)
 					if perr != nil {
-						c.err = fmt.Errorf("%s: invalid default value '%s' on (%s) field: %s", errs, defStr, name, perr.Error())
+						Config.err = fmt.Errorf("%s: invalid default value '%s' on (%s) field: %s", errs, defStr, name, perr.Error())
 						return
 					}
 					flag.Default = &DefaultValue{defStr}
 				case reflect.Bool:
 					_, perr := strconv.ParseBool(defStr)
 					if perr != nil {
-						c.err = fmt.Errorf("%s: invalid default value '%s' on (%s) field: %s", errs, defStr, name, perr.Error())
+						Config.err = fmt.Errorf("%s: invalid default value '%s' on (%s) field: %s", errs, defStr, name, perr.Error())
 						return
 					}
 					flag.Default = &DefaultValue{defStr}
 				default:
-					c.err = fmt.Errorf("%s: unsupported type '%s' on (%s) field: only [string, bool, int, int64, float64] types supported", errs, kind.String(), name)
+					Config.err = fmt.Errorf("%s: unsupported type '%s' on (%s) field: only [string, bool, int, int64, float64] types supported", errs, kind.String(), name)
 					return
 				}
 			}
@@ -338,11 +332,11 @@ func (c *Cfgo) AddFlags(category string, config interface{}) {
 			cat[flag.Name] = flag
 
 			// Add flag to category order list
-			c.flagOrder[category] = append(c.flagOrder[category], flag.Name)
+			Config.flagOrder[category] = append(Config.flagOrder[category], flag.Name)
 
 			// Add flag to shorts map
 			if short != "" {
-				c.shorts[short] = flag
+				Config.shorts[short] = flag
 			}
 		}
 	}
@@ -358,75 +352,75 @@ func (c *Cfgo) AddFlags(category string, config interface{}) {
 	//}
 }
 
-func (c *Cfgo) Parse() error {
-	if c.err != nil {
-		return c.err
+func Parse() error {
+	if Config.err != nil {
+		return Config.err
 	}
 
 	// Look for config file
-	c.setConfigPathFromCmd()
+	setConfigPathFromCmd()
 
 	// Init flags
-	if !c.init {
+	if !Config.init {
 		flag.String("config", "config.ini", "Use the configuration file provided")
-		for _, c := range c.flags {
-			for _, f := range c {
+		for _, cf := range Config.flags {
+			for _, f := range cf {
 				f.init()
 			}
 		}
-		c.init = true
+		Config.init = true
 	}
-	for _, c := range c.flags {
-		for _, f := range c {
+	for _, cf := range Config.flags {
+		for _, f := range cf {
 			f.hasBeenSet = false
 		}
 	}
 
 	// Get config from ini file, error if specified a config file (name or path) and it's not found
-	if err := c.setFromIni(); err != nil {
-		c.err = err
-		return c.err
+	if err := setFromIni(); err != nil {
+		Config.err = err
+		return Config.err
 	}
 
 	// Get config from environment variables
-	c.setFromEnv()
+	setFromEnv()
 
 	// Get config from command line parameters
-	c.setFromCmd()
+	setFromCmd()
 
 	// Get config from defaults
-	if err := c.setFromDefaults(); err != nil {
-		c.err = err
-		return c.err
+	if err := setFromDefaults(); err != nil {
+		Config.err = err
+		return Config.err
 	}
 
-	c.parsed = true
-	c.err = nil
+	Config.parsed = true
+	Config.err = nil
 
 	return nil
 }
 
-func (c *Cfgo) setFromDefaults() error {
+func setFromDefaults() error {
 	flag.Visit(func(f *flag.Flag) {
 		if len(f.Name) == 1 {
-			if fl, ok := c.shorts[f.Name]; ok && fl.Short == f.Name {
+			if fl, ok := Config.shorts[f.Name]; ok && fl.Short == f.Name {
 				fl.hasBeenSet = true
 			}
 		}
 		spl := strings.SplitN(f.Name, "-", 2)
 		if len(spl) == 2 {
-			if category, ok := c.flags[spl[0]]; ok {
+			if category, ok := Config.flags[spl[0]]; ok {
 				if fl, ok := category[spl[1]]; ok {
 					fl.hasBeenSet = true
 				}
 			}
 		} else {
-			if fl, ok := c.flags[""][f.Name]; ok {
+			if fl, ok := Config.flags[""][f.Name]; ok {
 				fl.hasBeenSet = true
 			}
 		}
 	})
-	for _, cat := range c.flags {
+	for _, cat := range Config.flags {
 		for _, fl := range cat {
 			if !fl.hasBeenSet {
 				if fl.Default == nil {
@@ -442,12 +436,12 @@ func (c *Cfgo) setFromDefaults() error {
 	return nil
 }
 
-func (c *Cfgo) setFromCmd() {
+func setFromCmd() {
 	flag.Parse()
 }
 
-func (c *Cfgo) setFromEnv() {
-	for _, cat := range c.flags {
+func setFromEnv() {
+	for _, cat := range Config.flags {
 		for _, f := range cat {
 			if val := os.Getenv(f.EnvName()); val != "" {
 				flag.Set(f.CmdName(), val)
@@ -457,38 +451,38 @@ func (c *Cfgo) setFromEnv() {
 	}
 }
 
-func (c *Cfgo) setFromIni() error {
+func setFromIni() error {
 	// Absolute path
-	if c.iniRequired || path.IsAbs(c.FileName) {
-		f, err := os.Open(c.FileName)
+	if Config.iniRequired || path.IsAbs(Config.FileName) {
+		f, err := os.Open(Config.FileName)
 		if err != nil {
-			return fmt.Errorf("config: loading config file (%s): %s", c.FileName, err.Error())
+			return fmt.Errorf("config: loading config file (%s): %s", Config.FileName, err.Error())
 		}
 		defer f.Close()
-		c.setFromMap(parseIniFile(f))
+		setFromMap(parseIniFile(f))
 		return nil
 	}
 
 	// Relative path (found)
-	if len(c.FilePaths) == 0 {
-		c.FilePaths = []string{"."}
+	if len(Config.FilePaths) == 0 {
+		Config.FilePaths = []string{"."}
 	}
 	found := false
-	for _, fp := range c.FilePaths {
-		f, err := os.Open(fp + "/" + c.FileName)
+	for _, fp := range Config.FilePaths {
+		f, err := os.Open(fp + "/" + Config.FileName)
 		if err == nil {
 			defer f.Close()
-			c.setFromMap(parseIniFile(f))
+			setFromMap(parseIniFile(f))
 			found = true
 			break
 		}
 	}
 
 	// Relative path (not found), fail if it was specified
-	if !found && c.iniRequired {
+	if !found && Config.iniRequired {
 		tried := []string{}
-		for _, fp := range c.FilePaths {
-			tried = append(tried, fp+"/"+c.FileName)
+		for _, fp := range Config.FilePaths {
+			tried = append(tried, fp+"/"+Config.FileName)
 		}
 		return fmt.Errorf("config: no config file found: tried %v", tried)
 	}
@@ -496,8 +490,8 @@ func (c *Cfgo) setFromIni() error {
 	return nil
 }
 
-func (c *Cfgo) setFromMap(m map[string]map[string]string) {
-	for cn, cat := range c.flags {
+func setFromMap(m map[string]map[string]string) {
+	for cn, cat := range Config.flags {
 		if catm, ok := m[cn]; ok {
 			for _, f := range cat {
 				if val, ok := catm[f.CmdName()]; ok {
@@ -509,27 +503,27 @@ func (c *Cfgo) setFromMap(m map[string]map[string]string) {
 	}
 }
 
-func (c *Cfgo) setConfigPathFromCmd() {
+func setConfigPathFromCmd() {
 	rxp := regexp.MustCompile(`^[^=]+="?(.+?)"?$`)
 	for i, arg := range os.Args[1:] {
 		if (arg == "-config" || arg == "--config") && i < len(os.Args)-2 {
-			c.FileName = os.Args[i+2]
-			c.iniRequired = true
+			Config.FileName = os.Args[i+2]
+			Config.iniRequired = true
 			return
 		}
 		if strings.HasPrefix(arg, "-config=") || strings.HasPrefix(arg, "--config=") {
 			if m := rxp.FindStringSubmatch(arg); m != nil {
-				c.FileName = m[1]
-				c.iniRequired = true
+				Config.FileName = m[1]
+				Config.iniRequired = true
 				return
 			}
 		}
 	}
-	c.iniRequired = false
+	Config.iniRequired = false
 }
 
-func (c *Cfgo) printUsage() {
-	fmt.Fprintf(os.Stderr, "usage: %s [<flags>]\n\n", c.Name)
+func printUsage() {
+	fmt.Fprintf(os.Stderr, "usage: %s [<flags>]\n\n", Config.Name)
 	cf := &Flag{
 		Name:        "config",
 		Category:    "",
@@ -538,13 +532,13 @@ func (c *Cfgo) printUsage() {
 	fmt.Fprintf(os.Stderr, "config sources:\n")
 	cf.PrintUsage()
 	fmt.Fprintf(os.Stderr, "\nflags:\n")
-	for _, fn := range c.flagOrder[""] {
-		c.flags[""][fn].PrintUsage()
+	for _, fn := range Config.flagOrder[""] {
+		Config.flags[""][fn].PrintUsage()
 	}
-	for cat, flags := range c.flags {
+	for cat, flags := range Config.flags {
 		if cat != "" {
 			fmt.Fprintf(os.Stderr, "\n%s flags:\n", cat)
-			for _, fn := range c.flagOrder[cat] {
+			for _, fn := range Config.flagOrder[cat] {
 				flags[fn].PrintUsage()
 			}
 		}

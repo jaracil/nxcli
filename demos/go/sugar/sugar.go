@@ -50,7 +50,7 @@ func NewService(server string, prefix string, opts *ServiceOpts) *service.Servic
 	if opts.MaxThreads <= 0 {
 		opts.MaxThreads = 1
 	}
-	return &service.Service{Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, DebugEnabled: false, StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
+	return &service.Service{Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
 }
 
 // IsNexusErr eturns wheter the err is a *nexus.JsonRpcErr

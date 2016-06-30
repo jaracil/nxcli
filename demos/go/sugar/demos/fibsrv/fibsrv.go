@@ -12,7 +12,7 @@ import (
 func main() {
 	// Service
 	s := sugar.NewService("test:test@nexus.n4m.zone", "test.sugar.fibsrv", &sugar.ServiceOpts{4, time.Hour, 12})
-	s.SetDebugEnabled(true)
+	s.SetLogLevel("debug")
 
 	// A method that computes fibonacci
 	s.AddMethod("fib", func(task *nexus.Task) {

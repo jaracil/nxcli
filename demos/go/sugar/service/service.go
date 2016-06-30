@@ -4,7 +4,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"os/signal"
@@ -15,6 +14,7 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 
 	nxcli "github.com/jaracil/nxcli"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	"github.com/jaracil/nxcli/demos/go/sugar/util"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
@@ -27,9 +27,9 @@ type Service struct {
 	Pulls            int
 	PullTimeout      time.Duration
 	MaxThreads       int
-	DebugEnabled     bool
 	StatsPeriod      time.Duration
 	GracefulExitTime time.Duration
+	LogLevel         string
 	nc               *nexus.NexusConn
 	methods          map[string]*Method
 	handler          *Method
@@ -38,6 +38,7 @@ type Service struct {
 	threadsSem       *Semaphore
 	wg               *sync.WaitGroup
 	stopping         bool
+	debugEnabled     bool
 }
 
 type Method struct {
@@ -141,12 +142,13 @@ func (s *Service) SetPullTimeout(t time.Duration) {
 	s.PullTimeout = t
 }
 
-// SetDebug enables debug messages
-func (s *Service) SetDebugEnabled(t bool) {
-	s.DebugEnabled = t
+// SetLogLevel sets the log level
+func (s *Service) SetLogLevel(t string) {
+	SetLogLevel(t)
+	s.debugEnabled = uint8(Log.Level) == DebugLevel
 }
 
-// SetDebugStatsPeriod changes the period for the stats to be printed
+// SetStatsPeriod changes the period for the stats to be printed
 func (s *Service) SetStatsPeriod(t time.Duration) {
 	s.StatsPeriod = t
 }
@@ -191,13 +193,13 @@ func (s *Service) Serve() error {
 
 	// Return an error if no methods where added
 	if s.methods == nil && s.handler == nil {
-		return fmt.Errorf("No methods to serve")
+		return fmt.Errorf("service: no methods to serve")
 	}
 
 	// Parse url
 	_, err = url.Parse(s.Server)
 	if err != nil {
-		return fmt.Errorf("Invalid nexus url (%s): %s", s.Server, err.Error())
+		return fmt.Errorf("service: invalid nexus url (%s): %s", s.Server, err.Error())
 	}
 
 	// Check service
@@ -228,11 +230,11 @@ func (s *Service) Serve() error {
 				var schres interface{}
 				err = json.Unmarshal([]byte(m.schemaSource), &schres)
 				if err != nil {
-					return fmt.Errorf("Error parsing method (%s) schema: %s", mname, err.Error())
+					return fmt.Errorf("service: error parsing method (%s) schema: %s", mname, err.Error())
 				}
 				m.schemaValidator, err = gojsonschema.NewSchema(gojsonschema.NewGoLoader(schres))
 				if err != nil {
-					return fmt.Errorf("Error on method (%s) schema: %s", mname, err.Error())
+					return fmt.Errorf("service: error on method (%s) schema: %s", mname, err.Error())
 				}
 				m.schema = schres
 			}
@@ -242,19 +244,17 @@ func (s *Service) Serve() error {
 	// Dial
 	s.nc, err = nxcli.Dial(s.Server, nxcli.NewDialOptions())
 	if err != nil {
-		return fmt.Errorf("Can't connect to nexus server (%s): %s", s.Server, err.Error())
+		return fmt.Errorf("service: can't connect to nexus server (%s): %s", s.Server, err.Error())
 	}
 
 	// Login
 	_, err = s.nc.Login(s.User, s.Password)
 	if err != nil {
-		return fmt.Errorf("Can't login to nexus server (%s) as (%s): %s", s.Server, s.User, err.Error())
+		return fmt.Errorf("service: can't login to nexus server (%s) as (%s): %s", s.Server, s.User, err.Error())
 	}
 
 	// Output
-	if s.DebugEnabled {
-		log.Printf("SERVICE: %s\n", s)
-	}
+	Log.Infof("service: %s", s)
 
 	// Serve
 	s.wg = &sync.WaitGroup{}
@@ -273,14 +273,10 @@ func (s *Service) Serve() error {
 		signalChan := make(chan os.Signal, 1)
 		signal.Notify(signalChan, os.Interrupt)
 		<-signalChan
-		if s.DebugEnabled {
-			log.Printf("SIGNAL: Received Ctrl+C: Stop gracefuly\n")
-		}
+		Log.Debugf("signal: received Ctrl+C: stop gracefuly")
 		s.GracefulStop()
 		<-signalChan
-		if s.DebugEnabled {
-			log.Printf("SIGNAL: Received Ctrl+C again: Stop\n")
-		}
+		Log.Debugf("signal: received Ctrl+C again: stop")
 		s.Stop()
 	}()
 
@@ -295,9 +291,9 @@ func (s *Service) Serve() error {
 	for {
 		select {
 		case <-statsTicker.C:
-			if s.DebugEnabled {
+			if s.debugEnabled {
 				nst := s.GetStats()
-				log.Printf("STATS: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]\n", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
+				Log.Debugf("stats: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
 			}
 		case graceful = <-s.stopServeCh: // Someone called Stop() or GracefulStop()
 			if !graceful {
@@ -318,28 +314,24 @@ func (s *Service) Serve() error {
 			continue
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
-				if s.DebugEnabled {
-					log.Printf("STOP: done\n")
-				}
+				Log.Debugf("stop: done")
 				return nil
 			}
 			s.nc.Close()
-			return fmt.Errorf("GRACEFUL: timeout after %s\n", s.GracefulExitTime.String())
+			return fmt.Errorf("graceful: timeout after %s", s.GracefulExitTime.String())
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.stopping {
-				if s.DebugEnabled {
-					if graceful {
-						log.Printf("GRACEFUL: done\n")
-					} else {
-						log.Printf("STOP: done\n")
-					}
+				if graceful {
+					Log.Debugf("graceful: done")
+				} else {
+					Log.Debugf("stop: done")
 				}
 				return nil
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				return fmt.Errorf("STOP: Nexus connection ended: %s", ctxErr.Error())
+				return fmt.Errorf("stop: nexus connection ended: %s", ctxErr.Error())
 			}
-			return fmt.Errorf("STOP: Nexus connection ended: stopped serving")
+			return fmt.Errorf("stop: nexus connection ended: stopped serving")
 		}
 	}
 	return nil
@@ -363,9 +355,7 @@ func (s *Service) taskPull(n int) {
 				continue
 			}
 			// An error ocurred: close the connection
-			if s.DebugEnabled {
-				log.Printf("PULL %d: Error pulling task: %s\n", n, err.Error())
-			}
+			Log.Errorf("pull %d: pulling task: %s", n, err.Error())
 			s.nc.Close()
 			s.threadsSem.Release()
 			return
@@ -373,9 +363,7 @@ func (s *Service) taskPull(n int) {
 
 		// A task has been pulled
 		atomic.AddUint64(&s.stats.tasksPulled, 1)
-		if s.DebugEnabled {
-			log.Printf("PULL %d: task[ path=%s method=%s params=%+v tags=%+v ]\n", n, task.Path, task.Method, task.Params, task.Tags)
-		}
+		Log.Debugf("pull %d: task[ path=%s method=%s params=%+v tags=%+v ]", n, task.Path, task.Method, task.Params, task.Tags)
 
 		// Get method or global handler
 		m := s.handler
@@ -406,7 +394,7 @@ func (s *Service) taskPull(n int) {
 					if !ok {
 						nerr = fmt.Errorf("pkg: %v", r)
 					}
-					log.Printf("PULL %d: Panic serving task: %s", n, nerr.Error())
+					Log.Errorf("pull %d: panic serving task: %s", n, nerr.Error())
 					task.SendError(nexus.ErrInternal, nerr.Error(), nil)
 				}
 			}()

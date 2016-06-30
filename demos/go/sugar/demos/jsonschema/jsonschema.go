@@ -14,8 +14,8 @@ var MyOpts struct {
 
 func main() {
 	// Config
-	config.Config.AddFlags("myopts", &MyOpts)
-	err := config.Config.Parse()
+	config.AddFlags("myopts", &MyOpts)
+	err := config.Parse()
 	if err != nil {
 		log.Println(err.Error())
 		return
