@@ -115,6 +115,9 @@ type Task struct {
 	Path   string
 	Method string
 	Params interface{}
+	Prio   int
+	Detach bool
+	User   string
 	Tags   map[string]interface{}
 }
 
@@ -426,13 +429,17 @@ func (nc *NexusConn) TaskPull(prefix string, timeout time.Duration) (*Task, erro
 	if err != nil {
 		return nil, err
 	}
+	t := ei.N(res)
 	task := &Task{
 		nc:     nc,
-		taskId: ei.N(res).M("taskid").StringZ(),
-		Path:   ei.N(res).M("path").StringZ(),
-		Method: ei.N(res).M("method").StringZ(),
-		Params: ei.N(res).M("params").RawZ(),
-		Tags:   ei.N(res).M("tags").MapStrZ(),
+		taskId: t.M("taskid").StringZ(),
+		Path:   t.M("path").StringZ(),
+		Method: t.M("method").StringZ(),
+		Params: t.M("params").RawZ(),
+		Tags:   t.M("tags").MapStrZ(),
+		Prio:   t.M("prio").IntZ(),
+		Detach: t.M("detach").BoolZ(),
+		User:   t.M("user").StringZ(),
 	}
 	return task, nil
 }
@@ -515,34 +522,34 @@ func (nc *NexusConn) PipeCreate(opts ...*PipeOpts) (*Pipe, error) {
 	return nc.PipeOpen(ei.N(res).M("pipeid").StringZ())
 }
 
-// ChanSubscribe subscribes a pipe to a channel.
+// TopicSubscribe subscribes a pipe to a topic.
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) ChanSubscribe(pipe *Pipe, channel string) (interface{}, error) {
+func (nc *NexusConn) TopicSubscribe(pipe *Pipe, topic string) (interface{}, error) {
 	par := ei.M{
 		"pipeid": pipe.Id(),
-		"chan":   channel,
+		"topic":  topic,
 	}
-	return nc.Exec("chan.sub", par)
+	return nc.Exec("topic.sub", par)
 }
 
-// ChanUnsubscribe unsubscribes a pipe from a channel.
+// TopicUnsubscribe unsubscribes a pipe from a topic.
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) ChanUnsubscribe(pipe *Pipe, channel string) (interface{}, error) {
+func (nc *NexusConn) TopicUnsubscribe(pipe *Pipe, topic string) (interface{}, error) {
 	par := ei.M{
 		"pipeid": pipe.Id(),
-		"chan":   channel,
+		"topic":  topic,
 	}
 	return nc.Exec("chan.unsub", par)
 }
 
-// ChanPublish publishes message to a channel.
+// TopicPublish publishes message to a topic.
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) ChanPublish(channel string, msg interface{}) (interface{}, error) {
+func (nc *NexusConn) TopicPublish(topic string, msg interface{}) (interface{}, error) {
 	par := ei.M{
-		"chan": channel,
-		"msg":  msg,
+		"topic": topic,
+		"msg":   msg,
 	}
-	return nc.Exec("chan.pub", par)
+	return nc.Exec("topic.pub", par)
 }
 
 // Lock tries to get a lock.
@@ -702,4 +709,9 @@ func (t *Task) Accept() (interface{}, error) {
 		"result": nil,
 	}
 	return t.nc.Exec("task.result", par)
+}
+
+// GetConn retrieves the task underlying nexus connection.
+func (t *Task) GetConn() *NexusConn {
+	return t.nc
 }
