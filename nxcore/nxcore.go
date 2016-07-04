@@ -115,6 +115,9 @@ type Task struct {
 	Path   string
 	Method string
 	Params interface{}
+	Prio   int
+	Detach bool
+	User   string
 	Tags   map[string]interface{}
 }
 
@@ -426,13 +429,17 @@ func (nc *NexusConn) TaskPull(prefix string, timeout time.Duration) (*Task, erro
 	if err != nil {
 		return nil, err
 	}
+	t := ei.N(res)
 	task := &Task{
 		nc:     nc,
-		taskId: ei.N(res).M("taskid").StringZ(),
-		Path:   ei.N(res).M("path").StringZ(),
-		Method: ei.N(res).M("method").StringZ(),
-		Params: ei.N(res).M("params").RawZ(),
-		Tags:   ei.N(res).M("tags").MapStrZ(),
+		taskId: t.M("taskid").StringZ(),
+		Path:   t.M("path").StringZ(),
+		Method: t.M("method").StringZ(),
+		Params: t.M("params").RawZ(),
+		Tags:   t.M("tags").MapStrZ(),
+		Prio:   t.M("prio").IntZ(),
+		Detach: t.M("detach").BoolZ(),
+		User:   t.M("user").StringZ(),
 	}
 	return task, nil
 }
