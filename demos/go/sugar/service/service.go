@@ -46,7 +46,6 @@ type Method struct {
 	schemaSource    string
 	schema          interface{}
 	schemaValidator *gojsonschema.Schema
-	f               func(*nexus.Task)
 }
 
 type Stats struct {
@@ -64,7 +63,7 @@ func (s *Service) GetConn() *nexus.NexusConn {
 	return s.nc
 }
 
-func (s *Service) addMethod(name string, schema string, f func(*nexus.Task)) {
+func (s *Service) addMethod(name string, schema string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
 	if s.methods == nil {
 		s.methods = map[string]*Method{}
 		s.methods["@schema"] = &Method{
@@ -82,9 +81,23 @@ func (s *Service) addMethod(name string, schema string, f func(*nexus.Task)) {
 			},
 		}
 	}
-	s.methods[name] = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: f}
+	s.methods[name] = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: defMethodWrapper(f)}
 	if schema != "" {
 		s.methods[name].schemaSource = schema
+	}
+}
+
+func defMethodWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func(*nexus.Task) {
+	return func(t *nexus.Task) {
+		res, err := f(t)
+		if _, ok := t.Tags["@local@responded"]; ok {
+			return
+		}
+		if err != nil {
+			t.SendError(err.Cod, err.Mess, err.Dat)
+		} else {
+			t.SendResult(res)
+		}
 	}
 }
 
