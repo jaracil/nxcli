@@ -515,34 +515,34 @@ func (nc *NexusConn) PipeCreate(opts ...*PipeOpts) (*Pipe, error) {
 	return nc.PipeOpen(ei.N(res).M("pipeid").StringZ())
 }
 
-// ChanSubscribe subscribes a pipe to a channel.
+// TopicSubscribe subscribes a pipe to a topic.
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) ChanSubscribe(pipe *Pipe, channel string) (interface{}, error) {
+func (nc *NexusConn) TopicSubscribe(pipe *Pipe, topic string) (interface{}, error) {
 	par := ei.M{
 		"pipeid": pipe.Id(),
-		"chan":   channel,
+		"topic":  topic,
 	}
-	return nc.Exec("chan.sub", par)
+	return nc.Exec("topic.sub", par)
 }
 
-// ChanUnsubscribe unsubscribes a pipe from a channel.
+// TopicUnsubscribe unsubscribes a pipe from a topic.
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) ChanUnsubscribe(pipe *Pipe, channel string) (interface{}, error) {
+func (nc *NexusConn) TopicUnsubscribe(pipe *Pipe, topic string) (interface{}, error) {
 	par := ei.M{
 		"pipeid": pipe.Id(),
-		"chan":   channel,
+		"topic":  topic,
 	}
 	return nc.Exec("chan.unsub", par)
 }
 
-// ChanPublish publishes message to a channel.
+// TopicPublish publishes message to a topic.
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) ChanPublish(channel string, msg interface{}) (interface{}, error) {
+func (nc *NexusConn) TopicPublish(topic string, msg interface{}) (interface{}, error) {
 	par := ei.M{
-		"chan": channel,
-		"msg":  msg,
+		"topic": topic,
+		"msg":   msg,
 	}
-	return nc.Exec("chan.pub", par)
+	return nc.Exec("topic.pub", par)
 }
 
 // Lock tries to get a lock.
