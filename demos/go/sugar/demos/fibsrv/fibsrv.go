@@ -11,17 +11,16 @@ import (
 
 func main() {
 	// Service
-	s := sugar.NewService("test:test@nexus.n4m.zone", "test.sugar.fibsrv", &sugar.ServiceOpts{4, time.Hour, 12})
+	s := sugar.NewService("test:test@localhost", "test.sugar.fibsrv", &sugar.ServiceOpts{4, time.Hour, 12})
 	s.SetLogLevel("debug")
 	s.SetStatsPeriod(time.Second * 5)
 
 	// A method that computes fibonacci
-	s.AddMethod("fib", func(task *nexus.Task) {
+	s.AddMethod("fib", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		// Parse params
 		v, err := ei.N(task.Params).M("v").Int()
 		if err != nil {
-			task.SendError(nexus.ErrInvalidParams, "", nil)
-			return
+			return nil, &nexus.JsonRpcErr{nexus.ErrInvalidParams, "", nil}
 		}
 		tout := ei.N(task.Params).M("t").Int64Z()
 
@@ -33,7 +32,7 @@ func main() {
 		for i, j := 0, 1; j < v; i, j = i+j, i {
 			r = append(r, i)
 		}
-		task.SendResult(r)
+		return r, nil
 	})
 
 	// Serve

@@ -46,6 +46,7 @@ type Method struct {
 	schemaSource    string
 	schema          interface{}
 	schemaValidator *gojsonschema.Schema
+	f               func(t *nexus.Task)
 }
 
 type Stats struct {
@@ -90,7 +91,7 @@ func (s *Service) addMethod(name string, schema string, f func(*nexus.Task) (int
 func defMethodWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func(*nexus.Task) {
 	return func(t *nexus.Task) {
 		res, err := f(t)
-		if _, ok := t.Tags["@local@responded"]; ok {
+		if _, ok := t.Tags["@local@repliedTo"]; ok {
 			return
 		}
 		if err != nil {
@@ -102,23 +103,23 @@ func defMethodWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func
 }
 
 // AddMethod adds (or replaces if already added) a method for the service
-// The function that receives the nexus.Task should SendError() or SendResult() with it
-func (s *Service) AddMethod(name string, f func(*nexus.Task)) {
+// The function that receives the nexus.Task should return a result or an error
+func (s *Service) AddMethod(name string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
 	s.addMethod(name, "", f)
 }
 
 // AddSchemaMethod adds (or replaces if already added) a method for the service with a JSON schema
-// The function that receives the nexus.Task should SendError() or SendResult() with it
+// The function that receives the nexus.Task should return a result or an error
 // If the schema validation does not succeed, an ErrInvalidParams error will be sent as a result for the task
-func (s *Service) AddMethodSchema(name string, schema string, f func(*nexus.Task)) {
+func (s *Service) AddMethodSchema(name string, schema string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
 	s.addMethod(name, schema, f)
 }
 
 // SetHandler sets the task handler for all methods, to allow custom parsing of the method
 // When a handler is set, methods added with AddMethod() have no effect
 // Passing a nil will remove the handler and turn back to methods from AddMethod()
-func (s *Service) SetHandler(h func(*nexus.Task)) {
-	s.handler = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: h}
+func (s *Service) SetHandler(h func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
+	s.handler = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: defMethodWrapper(h)}
 }
 
 // SetUrl modifies the service url

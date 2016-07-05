@@ -15,12 +15,11 @@ func main() {
 	}
 
 	// A handler for all methods
-	s.SetHandler(func(task *nexus.Task) {
+	s.SetHandler(func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		if task.Method == "hello" {
-			task.SendResult("bye")
-			return
+			return "bye", nil
 		}
-		task.SendError(nexus.ErrInvalidParams, "", nil)
+		return nil, &nexus.JsonRpcErr{nexus.ErrMethodNotFound, "", nil}
 	})
 
 	// Serve
