@@ -1,11 +1,12 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	"github.com/jaracil/ei"
+	"github.com/jaracil/nxcli/demos/go/sugar"
 	"github.com/jaracil/nxcli/demos/go/sugar/config"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
@@ -13,41 +14,44 @@ func main() {
 	// Service
 	s, err := config.NewService()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 		return
 	}
 
 	// A method that returns the service available methods
-	s.AddMethod("methods", func(task *nexus.Task) {
-		task.SendResult(s.GetMethods())
-	})
+	s.AddMethod("methods", sugar.ReplyToWrapper(func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+		return s.GetMethods(), nil
+	}))
 
 	// A method that panics: a nexus.ErrInternal error will be returned as a result
-	s.AddMethod("panic", func(task *nexus.Task) {
+	s.AddMethod("panic", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		panic("¿What if a method panics?")
-		task.SendResult("ok")
+		return "ok", nil
 	})
 
 	// A method that calls Stop()
-	s.AddMethod("exit", func(task *nexus.Task) {
-		task.SendResult("why?")
-		s.Stop()
+	s.AddMethod("exit", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+		go func() {
+			s.Stop()
+		}()
+		return "why?", nil
 	})
 
 	// A method that calls GracefulStop()
 	s.SetGracefulExitTime(time.Second * 10) // Wait nexus connection and workers for 10 seconds
-	s.AddMethod("gracefulExit", func(task *nexus.Task) {
-		task.SendResult("meh!")
-		s.GracefulStop()
+	s.AddMethod("gracefulExit", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+		go func() {
+			s.GracefulStop()
+		}()
+		return "meh!", nil
 	})
 
 	// A fibonacci method
-	s.AddMethod("fib", func(task *nexus.Task) {
+	s.AddMethod("fib", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		// Parse params
 		v, err := ei.N(task.Params).M("v").Int()
 		if err != nil {
-			task.SendError(nexus.ErrInvalidParams, "", nil)
-			return
+			return nil, &nexus.JsonRpcErr{nexus.ErrInvalidParams, "", nil}
 		}
 		tout := ei.N(task.Params).M("t").Int64Z()
 
@@ -59,12 +63,12 @@ func main() {
 		for i, j := 0, 1; j < v; i, j = i+j, i {
 			r = append(r, i)
 		}
-		task.SendResult(r)
+		return r, nil
 	})
 
 	// Serve
 	err = s.Serve()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 	}
 }

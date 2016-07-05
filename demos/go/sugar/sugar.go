@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jaracil/ei"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	"github.com/jaracil/nxcli/demos/go/sugar/service"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
@@ -50,16 +52,54 @@ func NewService(server string, prefix string, opts *ServiceOpts) *service.Servic
 	if opts.MaxThreads <= 0 {
 		opts.MaxThreads = 1
 	}
-	return &service.Service{Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, DebugEnabled: false, StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
+	return &service.Service{Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
 }
 
-// IsNexusErr eturns wheter the err is a *nexus.JsonRpcErr
+// ReplyToWrapper is a wrapper for methods
+// If a replyTo map parameter is set with a type parameter (with "pipe" or "service" values) and a path
+// parameter with the service path or pipeId to respond to, the usual SendError/SendResult pattern will
+// be skipped and the answer will go to the pipe or service specified after doing an Accept() to the task.
+func ReplyToWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func(*nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+	return func(t *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+		var repTy, repPath string
+		var ok bool
+		if replyTo, err := ei.N(t.Params).M("replyTo").MapStr(); err != nil {
+			return f(t)
+		} else {
+			if repPath, ok = replyTo["path"].(string); !ok {
+				return f(t)
+			}
+			if repTy, ok = replyTo["type"].(string); !ok || (repTy != "pipe" && repTy != "service") {
+				return f(t)
+			}
+		}
+		res, errm := f(t)
+		t.Tags["@local@repliedTo"] = true
+		_, err := t.Accept()
+		if err != nil {
+			Log.Warnf("replyto wrapper: could not accept task: %s", err.Error())
+		} else if repTy == "pipe" {
+			if pipe, err := t.GetConn().PipeOpen(repPath); err != nil {
+				Log.Warnf("replyto wrapper: could not open received pipeId (%s): %s", repPath, err.Error())
+			} else if _, err = pipe.Write(map[string]interface{}{"result": res, "error": errm}); err != nil {
+				Log.Warnf("replyto wrapper: error writing response to pipe: %s", err.Error())
+			}
+		} else if repTy == "service" {
+			if _, err := t.GetConn().TaskPush(repPath, map[string]interface{}{"result": res, "error": errm}, time.Second*30, &nexus.TaskOpts{Detach: true}); err != nil {
+				Log.Warnf("replyto wrapper: could not push response task to received path (%s): %s", repPath, err.Error())
+			}
+		}
+		return res, errm
+	}
+}
+
+// IsNexusErr returns whether the err is a *nexus.JsonRpcErr
 func IsNexusErr(err error) bool {
 	_, ok := err.(*nexus.JsonRpcErr)
 	return ok
 }
 
-// IsNexusErrCode returns wheter the err is a *nexus.JsonRpcErr and matches the *nexus.JsonRpcErr.Cod
+// IsNexusErrCode returns whether the err is a *nexus.JsonRpcErr and matches the *nexus.JsonRpcErr.Cod
 func IsNexusErrCode(err error, code int) bool {
 	if nexusErr, ok := err.(*nexus.JsonRpcErr); ok {
 		return nexusErr.Cod == code
