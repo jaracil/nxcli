@@ -710,3 +710,8 @@ func (t *Task) Accept() (interface{}, error) {
 	}
 	return t.nc.Exec("task.result", par)
 }
+
+// GetConn retrieves the task underlying nexus connection.
+func (t *Task) GetConn() *NexusConn {
+	return t.nc
+}

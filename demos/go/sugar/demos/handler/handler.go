@@ -1,9 +1,8 @@
 package main
 
 import (
-	"log"
-
 	"github.com/jaracil/nxcli/demos/go/sugar/config"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
@@ -11,22 +10,21 @@ func main() {
 	// Service
 	s, err := config.NewService()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 		return
 	}
 
 	// A handler for all methods
-	s.SetHandler(func(task *nexus.Task) {
+	s.SetHandler(func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		if task.Method == "hello" {
-			task.SendResult("bye")
-			return
+			return "bye", nil
 		}
-		task.SendError(nexus.ErrInvalidParams, "", nil)
+		return nil, &nexus.JsonRpcErr{nexus.ErrMethodNotFound, "", nil}
 	})
 
 	// Serve
 	err = s.Serve()
 	if err != nil {
-		log.Println(err.Error())
+		Log.Errorln(err.Error())
 	}
 }

@@ -4,10 +4,10 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +15,7 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 
 	nxcli "github.com/jaracil/nxcli"
+	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	"github.com/jaracil/nxcli/demos/go/sugar/util"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
@@ -27,9 +28,9 @@ type Service struct {
 	Pulls            int
 	PullTimeout      time.Duration
 	MaxThreads       int
-	DebugEnabled     bool
 	StatsPeriod      time.Duration
 	GracefulExitTime time.Duration
+	LogLevel         string
 	nc               *nexus.NexusConn
 	methods          map[string]*Method
 	handler          *Method
@@ -38,13 +39,14 @@ type Service struct {
 	threadsSem       *Semaphore
 	wg               *sync.WaitGroup
 	stopping         bool
+	debugEnabled     bool
 }
 
 type Method struct {
 	schemaSource    string
 	schema          interface{}
 	schemaValidator *gojsonschema.Schema
-	f               func(*nexus.Task)
+	f               func(t *nexus.Task)
 }
 
 type Stats struct {
@@ -62,7 +64,7 @@ func (s *Service) GetConn() *nexus.NexusConn {
 	return s.nc
 }
 
-func (s *Service) addMethod(name string, schema string, f func(*nexus.Task)) {
+func (s *Service) addMethod(name string, schema string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
 	if s.methods == nil {
 		s.methods = map[string]*Method{}
 		s.methods["@schema"] = &Method{
@@ -80,30 +82,44 @@ func (s *Service) addMethod(name string, schema string, f func(*nexus.Task)) {
 			},
 		}
 	}
-	s.methods[name] = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: f}
+	s.methods[name] = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: defMethodWrapper(f)}
 	if schema != "" {
 		s.methods[name].schemaSource = schema
 	}
 }
 
+func defMethodWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func(*nexus.Task) {
+	return func(t *nexus.Task) {
+		res, err := f(t)
+		if _, ok := t.Tags["@local@repliedTo"]; ok {
+			return
+		}
+		if err != nil {
+			t.SendError(err.Cod, err.Mess, err.Dat)
+		} else {
+			t.SendResult(res)
+		}
+	}
+}
+
 // AddMethod adds (or replaces if already added) a method for the service
-// The function that receives the nexus.Task should SendError() or SendResult() with it
-func (s *Service) AddMethod(name string, f func(*nexus.Task)) {
+// The function that receives the nexus.Task should return a result or an error
+func (s *Service) AddMethod(name string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
 	s.addMethod(name, "", f)
 }
 
 // AddSchemaMethod adds (or replaces if already added) a method for the service with a JSON schema
-// The function that receives the nexus.Task should SendError() or SendResult() with it
+// The function that receives the nexus.Task should return a result or an error
 // If the schema validation does not succeed, an ErrInvalidParams error will be sent as a result for the task
-func (s *Service) AddMethodSchema(name string, schema string, f func(*nexus.Task)) {
+func (s *Service) AddMethodSchema(name string, schema string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
 	s.addMethod(name, schema, f)
 }
 
 // SetHandler sets the task handler for all methods, to allow custom parsing of the method
 // When a handler is set, methods added with AddMethod() have no effect
 // Passing a nil will remove the handler and turn back to methods from AddMethod()
-func (s *Service) SetHandler(h func(*nexus.Task)) {
-	s.handler = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: h}
+func (s *Service) SetHandler(h func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
+	s.handler = &Method{schemaSource: "", schema: nil, schemaValidator: nil, f: defMethodWrapper(h)}
 }
 
 // SetUrl modifies the service url
@@ -141,12 +157,17 @@ func (s *Service) SetPullTimeout(t time.Duration) {
 	s.PullTimeout = t
 }
 
-// SetDebug enables debug messages
-func (s *Service) SetDebugEnabled(t bool) {
-	s.DebugEnabled = t
+// SetLogLevel sets the log level
+func (s *Service) SetLogLevel(t string) {
+	t = strings.ToLower(t)
+	SetLogLevel(t)
+	if Log.Level.String() == t {
+		s.LogLevel = t
+		s.debugEnabled = t == "debug"
+	}
 }
 
-// SetDebugStatsPeriod changes the period for the stats to be printed
+// SetStatsPeriod changes the period for the stats to be printed
 func (s *Service) SetStatsPeriod(t time.Duration) {
 	s.StatsPeriod = t
 }
@@ -189,15 +210,18 @@ func (s *Service) Stop() {
 func (s *Service) Serve() error {
 	var err error
 
+	// Set log level
+	s.SetLogLevel(s.LogLevel)
+
 	// Return an error if no methods where added
 	if s.methods == nil && s.handler == nil {
-		return fmt.Errorf("No methods to serve")
+		return fmt.Errorf("service: no methods to serve")
 	}
 
 	// Parse url
 	_, err = url.Parse(s.Server)
 	if err != nil {
-		return fmt.Errorf("Invalid nexus url (%s): %s", s.Server, err.Error())
+		return fmt.Errorf("service: invalid nexus url (%s): %s", s.Server, err.Error())
 	}
 
 	// Check service
@@ -228,11 +252,11 @@ func (s *Service) Serve() error {
 				var schres interface{}
 				err = json.Unmarshal([]byte(m.schemaSource), &schres)
 				if err != nil {
-					return fmt.Errorf("Error parsing method (%s) schema: %s", mname, err.Error())
+					return fmt.Errorf("service: error parsing method (%s) schema: %s", mname, err.Error())
 				}
 				m.schemaValidator, err = gojsonschema.NewSchema(gojsonschema.NewGoLoader(schres))
 				if err != nil {
-					return fmt.Errorf("Error on method (%s) schema: %s", mname, err.Error())
+					return fmt.Errorf("service: error on method (%s) schema: %s", mname, err.Error())
 				}
 				m.schema = schres
 			}
@@ -242,19 +266,17 @@ func (s *Service) Serve() error {
 	// Dial
 	s.nc, err = nxcli.Dial(s.Server, nxcli.NewDialOptions())
 	if err != nil {
-		return fmt.Errorf("Can't connect to nexus server (%s): %s", s.Server, err.Error())
+		return fmt.Errorf("service: can't connect to nexus server (%s): %s", s.Server, err.Error())
 	}
 
 	// Login
 	_, err = s.nc.Login(s.User, s.Password)
 	if err != nil {
-		return fmt.Errorf("Can't login to nexus server (%s) as (%s): %s", s.Server, s.User, err.Error())
+		return fmt.Errorf("service: can't login to nexus server (%s) as (%s): %s", s.Server, s.User, err.Error())
 	}
 
 	// Output
-	if s.DebugEnabled {
-		log.Printf("SERVICE: %s\n", s)
-	}
+	Log.Infof("service: %s", s)
 
 	// Serve
 	s.wg = &sync.WaitGroup{}
@@ -273,14 +295,10 @@ func (s *Service) Serve() error {
 		signalChan := make(chan os.Signal, 1)
 		signal.Notify(signalChan, os.Interrupt)
 		<-signalChan
-		if s.DebugEnabled {
-			log.Printf("SIGNAL: Received Ctrl+C: Stop gracefuly\n")
-		}
+		Log.Debugf("signal: received Ctrl+C: stop gracefuly")
 		s.GracefulStop()
 		<-signalChan
-		if s.DebugEnabled {
-			log.Printf("SIGNAL: Received Ctrl+C again: Stop\n")
-		}
+		Log.Debugf("signal: received Ctrl+C again: stop")
 		s.Stop()
 	}()
 
@@ -295,9 +313,9 @@ func (s *Service) Serve() error {
 	for {
 		select {
 		case <-statsTicker.C:
-			if s.DebugEnabled {
+			if s.debugEnabled {
 				nst := s.GetStats()
-				log.Printf("STATS: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]\n", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
+				Log.Debugf("stats: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
 			}
 		case graceful = <-s.stopServeCh: // Someone called Stop() or GracefulStop()
 			if !graceful {
@@ -318,28 +336,24 @@ func (s *Service) Serve() error {
 			continue
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
-				if s.DebugEnabled {
-					log.Printf("STOP: done\n")
-				}
+				Log.Debugf("stop: done")
 				return nil
 			}
 			s.nc.Close()
-			return fmt.Errorf("GRACEFUL: timeout after %s\n", s.GracefulExitTime.String())
+			return fmt.Errorf("graceful: timeout after %s", s.GracefulExitTime.String())
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.stopping {
-				if s.DebugEnabled {
-					if graceful {
-						log.Printf("GRACEFUL: done\n")
-					} else {
-						log.Printf("STOP: done\n")
-					}
+				if graceful {
+					Log.Debugf("graceful: done")
+				} else {
+					Log.Debugf("stop: done")
 				}
 				return nil
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				return fmt.Errorf("STOP: Nexus connection ended: %s", ctxErr.Error())
+				return fmt.Errorf("stop: nexus connection ended: %s", ctxErr.Error())
 			}
-			return fmt.Errorf("STOP: Nexus connection ended: stopped serving")
+			return fmt.Errorf("stop: nexus connection ended: stopped serving")
 		}
 	}
 	return nil
@@ -363,9 +377,7 @@ func (s *Service) taskPull(n int) {
 				continue
 			}
 			// An error ocurred: close the connection
-			if s.DebugEnabled {
-				log.Printf("PULL %d: Error pulling task: %s\n", n, err.Error())
-			}
+			Log.Errorf("pull %d: pulling task: %s", n, err.Error())
 			s.nc.Close()
 			s.threadsSem.Release()
 			return
@@ -373,9 +385,7 @@ func (s *Service) taskPull(n int) {
 
 		// A task has been pulled
 		atomic.AddUint64(&s.stats.tasksPulled, 1)
-		if s.DebugEnabled {
-			log.Printf("PULL %d: task[ path=%s method=%s params=%+v tags=%+v ]\n", n, task.Path, task.Method, task.Params, task.Tags)
-		}
+		Log.Debugf("pull %d: task[ path=%s method=%s params=%+v tags=%+v ]", n, task.Path, task.Method, task.Params, task.Tags)
 
 		// Get method or global handler
 		m := s.handler
@@ -406,7 +416,7 @@ func (s *Service) taskPull(n int) {
 					if !ok {
 						nerr = fmt.Errorf("pkg: %v", r)
 					}
-					log.Printf("PULL %d: Panic serving task: %s", n, nerr.Error())
+					Log.Errorf("pull %d: panic serving task: %s", n, nerr.Error())
 					task.SendError(nexus.ErrInternal, nerr.Error(), nil)
 				}
 			}()
@@ -455,5 +465,5 @@ func (s *Service) GetStats() *Stats {
 
 // String returns some service info as a stirng
 func (s *Service) String() string {
-	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads)
+	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
 }

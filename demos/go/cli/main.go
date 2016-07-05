@@ -82,18 +82,18 @@ var (
 
 	//
 
-	chanCmd = app.Command("chan", "Channels management")
+	chanCmd = app.Command("topic", "Topics management")
 
-	chanSub     = chanCmd.Command("sub", "Subscribe a pipe to a channel")
+	chanSub     = chanCmd.Command("sub", "Subscribe a pipe to a topic")
 	chanSubPipe = chanSub.Arg("pipe", "pipe id to subscribe").Required().String()
-	chanSubChan = chanSub.Arg("chan", "Channel to subscribe to").Required().String()
+	chanSubChan = chanSub.Arg("topic", "Topic to subscribe to").Required().String()
 
-	chanUnsub     = chanCmd.Command("unsub", "Unsubscribe a pipe from a channel")
+	chanUnsub     = chanCmd.Command("unsub", "Unsubscribe a pipe from a topic")
 	chanUnsubPipe = chanUnsub.Arg("pipe", "pipe id to subscribe").Required().String()
-	chanUnsubChan = chanUnsub.Arg("chan", "Channel to subscribe to").Required().String()
+	chanUnsubChan = chanUnsub.Arg("topic", "Topic to subscribe to").Required().String()
 
-	chanPub     = chanCmd.Command("pub", "Publish a message to a channel")
-	chanPubChan = chanPub.Arg("chan", "Channel to subscribe to").Required().String()
+	chanPub     = chanCmd.Command("pub", "Publish a message to a topic")
+	chanPubChan = chanPub.Arg("topic", "Topic to subscribe to").Required().String()
 	chanPubMsg  = chanPub.Arg("data", "Data to send").Required().Strings()
 )
 
@@ -313,7 +313,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			log.Println(err)
 			return
 		} else {
-			if _, err := nc.ChanSubscribe(pipe, *chanSubChan); err != nil {
+			if _, err := nc.TopicSubscribe(pipe, *chanSubChan); err != nil {
 				log.Println(err)
 				return
 			} else {
@@ -326,7 +326,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			log.Println(err)
 			return
 		} else {
-			if _, err := nc.ChanUnsubscribe(pipe, *chanUnsubChan); err != nil {
+			if _, err := nc.TopicUnsubscribe(pipe, *chanUnsubChan); err != nil {
 				log.Println(err)
 				return
 			} else {
@@ -339,7 +339,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 		defer func() { *chanPubMsg = []string{} }()
 
 		fmt.Println(*chanPubMsg)
-		if res, err := nc.ChanPublish(*chanPubChan, *chanPubMsg); err != nil {
+		if res, err := nc.TopicPublish(*chanPubChan, *chanPubMsg); err != nil {
 			log.Println(err)
 			return
 		} else {

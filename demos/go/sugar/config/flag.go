@@ -40,10 +40,14 @@ func (f *Flag) CmdName() string {
 
 func (f *Flag) PrintUsage() {
 	s := ""
+	n := f.Name
+	if f.Category != "" {
+		n = f.Category + "-" + n
+	}
 	if f.Short != "" {
-		s = fmt.Sprintf("  -%s, --%s=", f.Short, f.Name)
+		s = fmt.Sprintf("  -%s, --%s=", f.Short, n)
 	} else {
-		s = fmt.Sprintf("  --%s=", f.Name)
+		s = fmt.Sprintf("  --%s=", n)
 	}
 	ty := f.Value.Kind().String()
 	if f.Default != nil {
