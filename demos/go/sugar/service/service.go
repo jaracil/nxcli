@@ -39,6 +39,7 @@ type Service struct {
 	threadsSem       *Semaphore
 	wg               *sync.WaitGroup
 	stopping         bool
+	stopLock         *sync.Mutex
 	debugEnabled     bool
 }
 
@@ -283,6 +284,7 @@ func (s *Service) Serve() error {
 	s.stopServeCh = make(chan (bool), 1)
 	s.stats = &Stats{}
 	s.stopping = false
+	s.stopLock = &sync.Mutex{}
 	if s.threadsSem == nil {
 		s.threadsSem = newSemaphore(s.MaxThreads)
 	}
@@ -321,10 +323,11 @@ func (s *Service) Serve() error {
 			if !graceful {
 				s.nc.Close()
 				gracefulTimeout = time.NewTimer(time.Second)
-				s.stopping = true
+				s.setStopping()
 				continue
-			} else if !s.stopping {
-				s.stopping = true
+			}
+			if !s.isStopping() {
+				s.setStopping()
 				gracefulTimeout = time.NewTimer(s.GracefulExitTime)
 				go func() {
 					s.wg.Wait()
@@ -342,7 +345,7 @@ func (s *Service) Serve() error {
 			s.nc.Close()
 			return fmt.Errorf("graceful: timeout after %s", s.GracefulExitTime.String())
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
-			if s.stopping {
+			if s.isStopping() {
 				if graceful {
 					Log.Debugf("graceful: done")
 				} else {
@@ -362,7 +365,7 @@ func (s *Service) Serve() error {
 func (s *Service) taskPull(n int) {
 	for {
 		// Exit if stopping serve
-		if s.stopping {
+		if s.isStopping() {
 			return
 		}
 
@@ -376,8 +379,9 @@ func (s *Service) taskPull(n int) {
 				s.threadsSem.Release()
 				continue
 			}
-			// An error ocurred: close the connection
-			Log.Errorf("pull %d: pulling task: %s", n, err.Error())
+			if !s.isStopping() || !util.IsNexusErrCode(err, nexus.ErrCancel) { // An error ocurred (bypass if cancelled because service stop)
+				Log.Errorf("pull %d: pulling task: %s", n, err.Error())
+			}
 			s.nc.Close()
 			s.threadsSem.Release()
 			return
@@ -466,4 +470,16 @@ func (s *Service) GetStats() *Stats {
 // String returns some service info as a stirng
 func (s *Service) String() string {
 	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
+}
+
+func (s *Service) isStopping() bool {
+	s.stopLock.Lock()
+	defer s.stopLock.Unlock()
+	return s.stopping
+}
+
+func (s *Service) setStopping() {
+	s.stopLock.Lock()
+	defer s.stopLock.Unlock()
+	s.stopping = true
 }
