@@ -26,6 +26,7 @@ const (
 	ErrInvalidUser      = -32004
 	ErrUserExists       = -32005
 	ErrPermissionDenied = -32010
+	ErrTtlExpired       = -32011
 )
 
 var ErrStr = map[int]string{
@@ -41,6 +42,7 @@ var ErrStr = map[int]string{
 	ErrInvalidUser:      "Invalid user",
 	ErrUserExists:       "User already exists",
 	ErrPermissionDenied: "Permission denied",
+	ErrTtlExpired:       "TTL expired",
 }
 
 type JsonRpcErr struct {
@@ -125,6 +127,8 @@ type Task struct {
 type TaskOpts struct {
 	// Task priority default 0 (Set negative value for lower priority)
 	Priority int
+	// Task ttl default 5
+	Ttl int
 	// Task detach. If true, task is detached from creating session.
 	// If task is detached and creating session deads, task is not removed from tasks queue.
 	Detach bool
@@ -382,6 +386,9 @@ func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Du
 	if len(opts) > 0 {
 		if opts[0].Priority != 0 {
 			par["prio"] = opts[0].Priority
+		}
+		if opts[0].Ttl != 0 {
+			par["ttl"] = opts[0].Ttl
 		}
 		if opts[0].Detach {
 			par["detach"] = true
