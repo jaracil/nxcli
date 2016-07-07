@@ -12,7 +12,7 @@ import (
 
 	nxcli "github.com/jaracil/nxcli"
 	nexus "github.com/jaracil/nxcli/nxcore"
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/nayarsystems/kingpin"
 )
 
 var (
@@ -70,15 +70,20 @@ var (
 
 	tagsCmd = app.Command("tags", "tags management")
 
-	tagsSet       = tagsCmd.Command("set", "Set tags for an user on a prefix. Tags is a map[string]string in the form tag:value")
+	tagsSet       = tagsCmd.Command("set", "Set tags for an user on a prefix. Tags is a map like 'tag:value tag2:value2'")
 	tagsSetUser   = tagsSet.Arg("user", "user").Required().String()
 	tagsSetPrefix = tagsSet.Arg("prefix", "prefix").Required().String()
-	tagsSetTags   = tagsSet.Arg("tags", "tag:value").Required().StringMap()
+	tagsSetTags   = tagsSet.Arg("tags", "tag:value").StringMapIface()
+
+	tagsSetJ         = tagsCmd.Command("setj", "Set tags for an user on a prefix. Tags is a json dict like: { 'tag': value }")
+	tagsSetJUser     = tagsSetJ.Arg("user", "user").Required().String()
+	tagsSetJPrefix   = tagsSetJ.Arg("prefix", "prefix").Required().String()
+	tagsSetJTagsJson = tagsSetJ.Arg("tags", "{'@task.push': true}").Required().String()
 
 	tagsDel       = tagsCmd.Command("del", "delete tags for an user on a prefix. Tags is a list of space separated strings")
 	tagsDelUser   = tagsDel.Arg("user", "user").Required().String()
 	tagsDelPrefix = tagsDel.Arg("prefix", "prefix").Required().String()
-	tagsDelTags   = tagsDel.Arg("tags", "tag:value").Required().Strings()
+	tagsDelTags   = tagsDel.Arg("tags", "tag1 tag2 tag3").Required().Strings()
 
 	//
 
@@ -101,7 +106,7 @@ func main() {
 
 	// Enable -h as HelpFlag
 	app.HelpFlag.Short('h')
-	app.UsageTemplate(kingpin.CompactUsageTemplate)
+	//	/app.UsageTemplate(kingpin.CompactUsageTemplate)
 
 	parsed := kingpin.MustParse(app.Parse(os.Args[1:]))
 
@@ -251,7 +256,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 
 	case tagsSet.FullCommand():
 		// Clean afterwards in case we are looping on shell mode
-		defer func() { *tagsSetTags = make(map[string]string) }()
+		defer func() { *tagsSetTags = make(map[string]interface{}) }()
 
 		var tags map[string]interface{}
 		if b, err := json.Marshal(*tagsSetTags); err == nil {
@@ -263,6 +268,23 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 
 		log.Printf("Setting tags: %v on %s@%s", tags, *tagsSetUser, *tagsSetPrefix)
 		if _, err := nc.UserSetTags(*tagsSetUser, *tagsSetPrefix, tags); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("OK")
+		}
+
+	case tagsSetJ.FullCommand():
+		// Clean afterwards in case we are looping on shell mode
+
+		var tags map[string]interface{}
+		if json.Unmarshal([]byte(*tagsSetJTagsJson), &tags) != nil {
+			log.Println("Error parsing tags json:", *tagsSetJTagsJson)
+			return
+		}
+
+		log.Printf("Setting tags: %v on %s@%s", tags, *tagsSetJUser, *tagsSetJPrefix)
+		if _, err := nc.UserSetTags(*tagsSetJUser, *tagsSetJPrefix, tags); err != nil {
 			log.Println(err)
 			return
 		} else {
@@ -338,12 +360,11 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 		// Clean afterwards in case we are looping on shell mode
 		defer func() { *chanPubMsg = []string{} }()
 
-		fmt.Println(*chanPubMsg)
 		if res, err := nc.TopicPublish(*chanPubChan, *chanPubMsg); err != nil {
 			log.Println(err)
 			return
 		} else {
-			log.Println(res)
+			log.Println("Result:", res)
 
 		}
 	}
