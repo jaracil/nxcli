@@ -168,29 +168,29 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(WrapPipe(r), e, cb)
 		}()
 	})
-	jsnc.Set("chanPublish", func(channel string, msg interface{}, cb ...*js.Object) {
+	jsnc.Set("topicPublish", func(topic string, msg interface{}, cb ...*js.Object) {
 		go func() {
-			r, e := nc.ChanPublish(channel, msg)
+			r, e := nc.TopicPublish(topic, msg)
 			ret(r, e, cb)
 		}()
 	})
-	jsnc.Set("chanSubscribe", func(jspipe *js.Object, channel string, cb ...*js.Object) { // !!!Warning, Don't work!!!
+	jsnc.Set("topicSubscribe", func(jspipe *js.Object, topic string, cb ...*js.Object) { // !!!Warning, Don't work!!!
 		go func() {
 			par := ei.M{
 				"pipeid": jspipe.Get("id").String(),
-				"chan":   channel,
+				"topic":   topic,
 			}
-			r, e := nc.Exec("chan.sub", par)
+			r, e := nc.Exec("topic.sub", par)
 			ret(r, e, cb)
 		}()
 	})
-	jsnc.Set("chanUnsubscribe", func(jspipe *js.Object, channel string, cb ...*js.Object) {
+	jsnc.Set("topicUnsubscribe", func(jspipe *js.Object, topic string, cb ...*js.Object) {
 		go func() {
 			par := ei.M{
 				"pipeid": jspipe.Get("id").String(),
-				"chan":   channel,
+				"topic":   topic,
 			}
-			r, e := nc.Exec("chan.unsub", par)
+			r, e := nc.Exec("topic.unsub", par)
 			ret(r, e, cb)
 		}()
 	})
