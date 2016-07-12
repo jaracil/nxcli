@@ -546,7 +546,7 @@ func (nc *NexusConn) TopicUnsubscribe(pipe *Pipe, topic string) (interface{}, er
 		"pipeid": pipe.Id(),
 		"topic":  topic,
 	}
-	return nc.Exec("chan.unsub", par)
+	return nc.Exec("topic.unsub", par)
 }
 
 // TopicPublish publishes message to a topic.
