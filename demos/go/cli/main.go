@@ -66,6 +66,9 @@ var (
 	userPassName = userPass.Arg("username", "username").Required().String()
 	userPassPass = userPass.Arg("password", "password").Required().String()
 
+	userList       = userCmd.Command("list", "List users on a prefix")
+	userListPrefix = userList.Arg("prefix", "prefix").Required().String()
+
 	///
 
 	tagsCmd = app.Command("tags", "tags management")
@@ -111,11 +114,11 @@ func main() {
 	parsed := kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	if nc, err := nxcli.Dial(*serverIP, nil); err == nil {
-		if _, err := nc.Login(*user, *pass); err != nil {
+		if res, err := nc.Login(*user, *pass); err != nil {
 			log.Println("Couldn't login:", err)
 			return
 		} else {
-			log.Println("Logged as", *user)
+			log.Println("Logged as", res)
 		}
 
 		execCmd(nc, parsed)
@@ -244,6 +247,24 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			return
 		} else {
 			log.Println("OK")
+		}
+
+	case userList.FullCommand():
+		log.Printf("Listing users on \"%s\"", *userListPrefix)
+
+		if res, err := nc.UserList(*userListPrefix); err != nil {
+			log.Println(err)
+			return
+		} else {
+			for _, user := range res {
+				log.Printf("User: [%s]\n", user.User)
+				for prefix, tags := range user.Tags {
+					log.Printf("\tPrefix: [%s]\n", prefix)
+					for tag, val := range tags {
+						log.Printf("\t\t%s: %v\n", tag, val)
+					}
+				}
+			}
 		}
 
 	case userPass.FullCommand():

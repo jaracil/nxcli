@@ -470,6 +470,28 @@ func (nc *NexusConn) UserDelete(user string) (interface{}, error) {
 	return nc.Exec("user.delete", par)
 }
 
+type UserInfo struct {
+	User string                            `json:"user"`
+	Tags map[string]map[string]interface{} `json:"tags"`
+}
+
+// UserList lists users from Nexus user's table.
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserList(prefix string) ([]UserInfo, error) {
+	par := map[string]interface{}{
+		"prefix": prefix,
+	}
+	res, err := nc.Exec("user.list", par)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]UserInfo, 0)
+	b, err := json.Marshal(res)
+	json.Unmarshal(b, &users)
+
+	return users, nil
+}
+
 // UserSetTags set tags on user's prefix.
 // Returns the response object from Nexus or error.
 func (nc *NexusConn) UserSetTags(user string, prefix string, tags map[string]interface{}) (interface{}, error) {
