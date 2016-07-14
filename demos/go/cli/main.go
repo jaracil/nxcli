@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jaracil/ei"
 	nxcli "github.com/jaracil/nxcli"
 	nexus "github.com/jaracil/nxcli/nxcore"
 	"github.com/nayarsystems/kingpin"
@@ -42,7 +43,7 @@ var (
 	pullMethod = pull.Arg("prefix", "Method to call").Required().String()
 
 	taskList       = app.Command("list", "Show push/pulls happening on a prefix")
-	taskListPrefix = taskList.Arg("prefix", "prefix").Required().String()
+	taskListPrefix = taskList.Arg("prefix", "prefix").Default("").String()
 
 	///
 
@@ -70,12 +71,12 @@ var (
 	userPassPass = userPass.Arg("password", "password").Required().String()
 
 	userList       = userCmd.Command("list", "List users on a prefix")
-	userListPrefix = userList.Arg("prefix", "prefix").Required().String()
+	userListPrefix = userList.Arg("prefix", "prefix").Default("").String()
 
 	///
 
 	sessionsCmd    = app.Command("sessions", "Show sessions info")
-	sessionsPrefix = sessionsCmd.Arg("prefix", "User prefix").Required().String()
+	sessionsPrefix = sessionsCmd.Arg("prefix", "User prefix").Default("").String()
 
 	///
 
@@ -126,7 +127,12 @@ func main() {
 			log.Println("Couldn't login:", err)
 			return
 		} else {
-			log.Println("Logged as", res)
+			if ei.N(res).M("ok").BoolZ() {
+				log.Println("Logged as", ei.N(res).M("user").StringZ())
+			} else {
+				log.Println("Unexpected reply:", res)
+				return
+			}
 		}
 
 		execCmd(nc, parsed)
@@ -308,8 +314,8 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			for _, session := range res {
 				log.Printf("\tUser: [%s] - %d sessions", session.User, session.N)
 				for _, ses := range session.Sessions {
-					log.Printf("\t\tID: %s (Node:%s) - %s - Since: %s",
-						ses.Id, ses.NodeId, ses.RemoteAddress, ses.CreationTime.Format("Mon Jan _2 15:04:05 2006"))
+					log.Printf("\t\tID: %s (Node:%s) - Protocol: %s - Remote: %s - Since: %s",
+						ses.Id, ses.NodeId, ses.Protocol, ses.RemoteAddress, ses.CreationTime.Format("Mon Jan _2 15:04:05 2006"))
 				}
 			}
 		}

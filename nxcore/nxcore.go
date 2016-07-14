@@ -382,6 +382,7 @@ type SessionInfo struct {
 	Id            string    `json:"id"`
 	NodeId        string    `json:"nodeId"`
 	RemoteAddress string    `json:"remoteAddress"`
+	Protocol      string    `json:"protocol"`
 	CreationTime  time.Time `json:"creationTime"`
 }
 
