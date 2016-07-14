@@ -372,14 +372,22 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 
 }
 
+type UserSessions struct {
+	User     string        `json:"user"`
+	Sessions []SessionInfo `json:"sessions"`
+	N        int           `json:"n"`
+}
+
 type SessionInfo struct {
-	User     string `json:"user"`
-	Sessions int    `json:"sessions"`
+	Id            string    `json:"id"`
+	NodeId        string    `json:"nodeId"`
+	RemoteAddress string    `json:"remoteAddress"`
+	CreationTime  time.Time `json:"creationTime"`
 }
 
 // Sessions returns info of the users sessions
 // Returns a list of SessionInfo structs or an error
-func (nc *NexusConn) Sessions(prefix string) ([]SessionInfo, error) {
+func (nc *NexusConn) Sessions(prefix string) ([]UserSessions, error) {
 	par := map[string]interface{}{
 		"prefix": prefix,
 	}
@@ -387,7 +395,7 @@ func (nc *NexusConn) Sessions(prefix string) ([]SessionInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	sessions := make([]SessionInfo, 0)
+	sessions := make([]UserSessions, 0)
 	b, err := json.Marshal(res)
 	if err != nil {
 		return nil, err

@@ -287,7 +287,11 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 		} else {
 			log.Println("Sessions:")
 			for _, session := range res {
-				log.Printf("\tUser: [%s] - %d sessions", session.User, session.Sessions)
+				log.Printf("\tUser: [%s] - %d sessions", session.User, session.N)
+				for _, ses := range session.Sessions {
+					log.Printf("\t\tID: %s (Node:%s) - %s - Since: %s",
+						ses.Id, ses.NodeId, ses.RemoteAddress, ses.CreationTime.Format("Mon Jan _2 15:04:05 2006"))
+				}
 			}
 		}
 
