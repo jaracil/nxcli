@@ -71,6 +71,11 @@ var (
 
 	///
 
+	sessionsCmd    = app.Command("sessions", "Show sessions info")
+	sessionsPrefix = sessionsCmd.Arg("prefix", "prefix").Required().String()
+
+	///
+
 	tagsCmd = app.Command("tags", "tags management")
 
 	tagsSet       = tagsCmd.Command("set", "Set tags for an user on a prefix. Tags is a map like 'tag:value tag2:value2'")
@@ -273,6 +278,17 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			return
 		} else {
 			log.Println("OK")
+		}
+
+	case sessionsCmd.FullCommand():
+		if res, err := nc.Sessions(*sessionsPrefix); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("Sessions:")
+			for _, session := range res {
+				log.Printf("\tUser: [%s] - %d sessions", session.User, session.Sessions)
+			}
 		}
 
 	case tagsSet.FullCommand():

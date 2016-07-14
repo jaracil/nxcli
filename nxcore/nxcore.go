@@ -372,6 +372,35 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 
 }
 
+type SessionInfo struct {
+	User     string `json:"user"`
+	Sessions int    `json:"sessions"`
+}
+
+// Sessions returns info of the users sessions
+// Returns a list of SessionInfo structs or an error
+func (nc *NexusConn) Sessions(prefix string) ([]SessionInfo, error) {
+	par := map[string]interface{}{
+		"prefix": prefix,
+	}
+	res, err := nc.Exec("sys.sessions", par)
+	if err != nil {
+		return nil, err
+	}
+	sessions := make([]SessionInfo, 0)
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, &sessions)
+	if err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+
+}
+
 // TaskPush pushes a task to Nexus cloud.
 // method is the method path Ex. "test.fibonacci.fib"
 // params is the method params object.
@@ -476,7 +505,7 @@ type UserInfo struct {
 }
 
 // UserList lists users from Nexus user's table.
-// Returns the response object from Nexus or error.
+// Returns a list of UserInfo or error.
 func (nc *NexusConn) UserList(prefix string) ([]UserInfo, error) {
 	par := map[string]interface{}{
 		"prefix": prefix,
@@ -487,7 +516,13 @@ func (nc *NexusConn) UserList(prefix string) ([]UserInfo, error) {
 	}
 	users := make([]UserInfo, 0)
 	b, err := json.Marshal(res)
-	json.Unmarshal(b, &users)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, &users)
+	if err != nil {
+		return nil, err
+	}
 
 	return users, nil
 }
