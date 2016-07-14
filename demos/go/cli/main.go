@@ -80,6 +80,10 @@ var (
 
 	///
 
+	nodesCmd = app.Command("nodes", "Show nodes info")
+
+	///
+
 	tagsCmd = app.Command("tags", "tags management")
 
 	tagsSet       = tagsCmd.Command("set", "Set tags for an user on a prefix. Tags is a map like 'tag:value tag2:value2'")
@@ -317,6 +321,18 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 					log.Printf("\t\tID: %s (Node:%s) - Protocol: %s - Remote: %s - Since: %s",
 						ses.Id, ses.NodeId, ses.Protocol, ses.RemoteAddress, ses.CreationTime.Format("Mon Jan _2 15:04:05 2006"))
 				}
+			}
+		}
+
+	case nodesCmd.FullCommand():
+		if res, err := nc.Nodes(); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("Nodes:")
+			for _, node := range res {
+				log.Printf("\tNodeId: [%s] - %d clients - Load: %0.2f/%0.2f/%0.2f", node.NodeId, node.Clients, node.Load["Load1"], node.Load["Load5"], node.Load["Load15"])
+
 			}
 		}
 

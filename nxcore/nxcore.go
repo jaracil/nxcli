@@ -407,7 +407,33 @@ func (nc *NexusConn) Sessions(prefix string) ([]UserSessions, error) {
 	}
 
 	return sessions, nil
+}
 
+type NodeInfo struct {
+	Load    map[string]float64 `json:"load"`
+	Clients int                `json:"clients"`
+	NodeId  string             `json:"id"`
+}
+
+// Nodes returns info of the nodes state
+// Returns a list of NodeInfo structs or an error
+func (nc *NexusConn) Nodes() ([]NodeInfo, error) {
+	par := map[string]interface{}{}
+	res, err := nc.Exec("sys.nodes", par)
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]NodeInfo, 0)
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, &nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	return nodes, nil
 }
 
 // TaskPush pushes a task to Nexus cloud.
