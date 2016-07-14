@@ -41,6 +41,9 @@ var (
 	pull       = app.Command("pull", "Execute a task.pull rpc call on Nexus")
 	pullMethod = pull.Arg("prefix", "Method to call").Required().String()
 
+	taskList       = app.Command("list", "Show push/pulls happening on a prefix")
+	taskListPrefix = taskList.Arg("prefix", "prefix").Required().String()
+
 	///
 
 	pipeCmd = app.Command("pipe", "Pipe tasks")
@@ -72,7 +75,7 @@ var (
 	///
 
 	sessionsCmd    = app.Command("sessions", "Show sessions info")
-	sessionsPrefix = sessionsCmd.Arg("prefix", "prefix").Required().String()
+	sessionsPrefix = sessionsCmd.Arg("prefix", "User prefix").Required().String()
 
 	///
 
@@ -195,6 +198,22 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			} else {
 				ret.SendResult("dummy response")
 			}
+		}
+
+	case taskList.FullCommand():
+		if res, err := nc.TaskList(*taskListPrefix); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Printf("Pulls from [%s]:\n", *taskListPrefix)
+			for path, n := range res.Pulls {
+				log.Printf("\t[%s] - %d\n", path, n)
+			}
+			log.Printf("Pushes from [%s]:\n", *taskListPrefix)
+			for path, n := range res.Pushes {
+				log.Printf("\t[%s] - %d\n", path, n)
+			}
+
 		}
 
 	case pipeWrite.FullCommand():

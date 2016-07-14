@@ -488,6 +488,35 @@ func (nc *NexusConn) TaskPull(prefix string, timeout time.Duration) (*Task, erro
 	return task, nil
 }
 
+type TaskList struct {
+	Pulls  map[string]int `json:"pulls"`
+	Pushes map[string]int `json:"pushes"`
+}
+
+// TaskList returns how many push/pulls are happening on a path
+// prefix is the method prefix we want pull Ex. "test.fibonacci"
+// Returns a TaskList or error.
+func (nc *NexusConn) TaskList(prefix string) (*TaskList, error) {
+	par := map[string]interface{}{
+		"prefix": prefix,
+	}
+	res, err := nc.Exec("task.list", par)
+	if err != nil {
+		return nil, err
+	}
+	list := &TaskList{}
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, list)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
 // UserCreate creates new user in Nexus user's table.
 // Returns the response object from Nexus or error.
 func (nc *NexusConn) UserCreate(user, pass string) (interface{}, error) {
