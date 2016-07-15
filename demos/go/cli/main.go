@@ -75,8 +75,13 @@ var (
 
 	///
 
-	sessionsCmd    = app.Command("sessions", "Show sessions info")
-	sessionsPrefix = sessionsCmd.Arg("prefix", "User prefix").Default("").String()
+	sessionsCmd = app.Command("sessions", "Show sessions info")
+
+	sessionsList       = sessionsCmd.Command("list", "list active sessions")
+	sessionsListPrefix = sessionsList.Arg("prefix", "User prefix").Default("").String()
+
+	sessionsKick     = sessionsCmd.Command("kick", "kick any active connection with matching prefix")
+	sessionsKickConn = sessionsKick.Arg("connId", "connId prefix").Required().String()
 
 	///
 
@@ -309,8 +314,8 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			log.Println("OK")
 		}
 
-	case sessionsCmd.FullCommand():
-		if res, err := nc.Sessions(*sessionsPrefix); err != nil {
+	case sessionsList.FullCommand():
+		if res, err := nc.SessionList(*sessionsListPrefix); err != nil {
 			log.Println(err)
 			return
 		} else {
@@ -324,8 +329,16 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			}
 		}
 
+	case sessionsKick.FullCommand():
+		if _, err := nc.SessionKick(*sessionsKickConn); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("OK")
+		}
+
 	case nodesCmd.FullCommand():
-		if res, err := nc.Nodes(); err != nil {
+		if res, err := nc.NodeList(); err != nil {
 			log.Println(err)
 			return
 		} else {

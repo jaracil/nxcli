@@ -388,11 +388,11 @@ type SessionInfo struct {
 
 // Sessions returns info of the users sessions
 // Returns a list of SessionInfo structs or an error
-func (nc *NexusConn) Sessions(prefix string) ([]UserSessions, error) {
+func (nc *NexusConn) SessionList(prefix string) ([]UserSessions, error) {
 	par := map[string]interface{}{
 		"prefix": prefix,
 	}
-	res, err := nc.Exec("sys.sessions", par)
+	res, err := nc.Exec("sys.sessions.list", par)
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +409,15 @@ func (nc *NexusConn) Sessions(prefix string) ([]UserSessions, error) {
 	return sessions, nil
 }
 
+// SessionKick forces the node owner of the client connection to close it
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
+	par := map[string]interface{}{
+		"connId": connId,
+	}
+	return nc.Exec("sys.sessions.kick", par)
+}
+
 type NodeInfo struct {
 	Load    map[string]float64 `json:"load"`
 	Clients int                `json:"clients"`
@@ -417,9 +426,9 @@ type NodeInfo struct {
 
 // Nodes returns info of the nodes state
 // Returns a list of NodeInfo structs or an error
-func (nc *NexusConn) Nodes() ([]NodeInfo, error) {
+func (nc *NexusConn) NodeList() ([]NodeInfo, error) {
 	par := map[string]interface{}{}
-	res, err := nc.Exec("sys.nodes", par)
+	res, err := nc.Exec("sys.nodes.list", par)
 	if err != nil {
 		return nil, err
 	}
