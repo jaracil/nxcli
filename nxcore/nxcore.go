@@ -393,6 +393,7 @@ func (nc *NexusConn) SessionList(prefix string) ([]UserSessions, error) {
 		"prefix": prefix,
 	}
 	res, err := nc.Exec("sys.sessions.list", par)
+	res, err := nc.Exec("sys.session.list", par)
 	if err != nil {
 		return nil, err
 	}
@@ -416,6 +417,7 @@ func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
 		"connId": connId,
 	}
 	return nc.Exec("sys.sessions.kick", par)
+	return nc.Exec("sys.session.kick", par)
 }
 
 type NodeInfo struct {
@@ -429,6 +431,7 @@ type NodeInfo struct {
 func (nc *NexusConn) NodeList() ([]NodeInfo, error) {
 	par := map[string]interface{}{}
 	res, err := nc.Exec("sys.nodes.list", par)
+	res, err := nc.Exec("sys.node.list", par)
 	if err != nil {
 		return nil, err
 	}
