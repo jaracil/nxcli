@@ -388,11 +388,12 @@ type SessionInfo struct {
 
 // Sessions returns info of the users sessions
 // Returns a list of SessionInfo structs or an error
-func (nc *NexusConn) SessionList(prefix string) ([]UserSessions, error) {
+func (nc *NexusConn) SessionList(prefix string, limit int, skip int) ([]UserSessions, error) {
 	par := map[string]interface{}{
 		"prefix": prefix,
+		"limit":  limit,
+		"skip":   skip,
 	}
-	res, err := nc.Exec("sys.sessions.list", par)
 	res, err := nc.Exec("sys.session.list", par)
 	if err != nil {
 		return nil, err
@@ -416,7 +417,6 @@ func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
 	par := map[string]interface{}{
 		"connId": connId,
 	}
-	return nc.Exec("sys.sessions.kick", par)
 	return nc.Exec("sys.session.kick", par)
 }
 
@@ -428,9 +428,11 @@ type NodeInfo struct {
 
 // Nodes returns info of the nodes state
 // Returns a list of NodeInfo structs or an error
-func (nc *NexusConn) NodeList() ([]NodeInfo, error) {
-	par := map[string]interface{}{}
-	res, err := nc.Exec("sys.nodes.list", par)
+func (nc *NexusConn) NodeList(limit int, skip int) ([]NodeInfo, error) {
+	par := map[string]interface{}{
+		"limit": limit,
+		"skip":  skip,
+	}
 	res, err := nc.Exec("sys.node.list", par)
 	if err != nil {
 		return nil, err
@@ -535,9 +537,11 @@ type TaskList struct {
 // TaskList returns how many push/pulls are happening on a path
 // prefix is the method prefix we want pull Ex. "test.fibonacci"
 // Returns a TaskList or error.
-func (nc *NexusConn) TaskList(prefix string) (*TaskList, error) {
+func (nc *NexusConn) TaskList(prefix string, limit int, skip int) (*TaskList, error) {
 	par := map[string]interface{}{
 		"prefix": prefix,
+		"limit":  limit,
+		"skip":   skip,
 	}
 	res, err := nc.Exec("task.list", par)
 	if err != nil {
@@ -582,9 +586,11 @@ type UserInfo struct {
 
 // UserList lists users from Nexus user's table.
 // Returns a list of UserInfo or error.
-func (nc *NexusConn) UserList(prefix string) ([]UserInfo, error) {
+func (nc *NexusConn) UserList(prefix string, limit int, skip int) ([]UserInfo, error) {
 	par := map[string]interface{}{
 		"prefix": prefix,
+		"limit":  limit,
+		"skip":   skip,
 	}
 	res, err := nc.Exec("user.list", par)
 	if err != nil {

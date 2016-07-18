@@ -44,6 +44,8 @@ var (
 
 	taskList       = app.Command("list", "Show push/pulls happening on a prefix")
 	taskListPrefix = taskList.Arg("prefix", "prefix").Default("").String()
+	taskListLimit  = taskList.Flag("limit", "Limit the number of tasks returned").Default("100").Int()
+	taskListSkip   = taskList.Flag("skip", "Skip a number of tasks before applying the limit").Default("0").Int()
 
 	///
 
@@ -72,6 +74,8 @@ var (
 
 	userList       = userCmd.Command("list", "List users on a prefix")
 	userListPrefix = userList.Arg("prefix", "prefix").Default("").String()
+	userListLimit  = userList.Flag("limit", "Limit the number of users returned").Default("100").Int()
+	userListSkip   = userList.Flag("skip", "Skip a number of elements before applying the limit").Default("0").Int()
 
 	userKick       = userCmd.Command("kick", "Kick users on a prefix")
 	userKickPrefix = userKick.Arg("prefix", "prefix").Required().String()
@@ -82,13 +86,17 @@ var (
 
 	sessionsList       = sessionsCmd.Command("list", "list active sessions")
 	sessionsListPrefix = sessionsList.Arg("prefix", "User prefix").Default("").String()
+	sessionsListLimit  = sessionsList.Flag("limit", "Limit the number of sessions returned").Default("100").Int()
+	sessionsListSkip   = sessionsList.Flag("skip", "Skip a number of elements before applying the limit").Default("0").Int()
 
 	sessionsKick     = sessionsCmd.Command("kick", "kick any active connection with matching prefix")
 	sessionsKickConn = sessionsKick.Arg("connId", "connId prefix").Required().String()
 
 	///
 
-	nodesCmd = app.Command("nodes", "Show nodes info")
+	nodesCmd      = app.Command("nodes", "Show nodes info")
+	nodesCmdLimit = nodesCmd.Flag("limit", "Limit the number of nodes returned").Default("100").Int()
+	nodesCmdSkip  = nodesCmd.Flag("skip", "Skip a number of elements before applying the limit").Default("0").Int()
 
 	///
 
@@ -219,7 +227,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 		}
 
 	case taskList.FullCommand():
-		if res, err := nc.TaskList(*taskListPrefix); err != nil {
+		if res, err := nc.TaskList(*taskListPrefix, *taskListLimit, *taskListSkip); err != nil {
 			log.Println(err)
 			return
 		} else {
@@ -294,7 +302,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 	case userList.FullCommand():
 		log.Printf("Listing users on \"%s\"", *userListPrefix)
 
-		if res, err := nc.UserList(*userListPrefix); err != nil {
+		if res, err := nc.UserList(*userListPrefix, *userListLimit, *userListSkip); err != nil {
 			log.Println(err)
 			return
 		} else {
@@ -320,7 +328,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 	case userKick.FullCommand():
 		log.Printf("Kicking users on \"%s\"", *userKickPrefix)
 
-		if res, err := nc.SessionList(*userKickPrefix); err != nil {
+		if res, err := nc.SessionList(*userKickPrefix, -1, -1); err != nil {
 			log.Println(err)
 			return
 		} else {
@@ -334,7 +342,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			}
 		}
 	case sessionsList.FullCommand():
-		if res, err := nc.SessionList(*sessionsListPrefix); err != nil {
+		if res, err := nc.SessionList(*sessionsListPrefix, *sessionsListLimit, *sessionsListSkip); err != nil {
 			log.Println(err)
 			return
 		} else {
@@ -357,7 +365,7 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 		}
 
 	case nodesCmd.FullCommand():
-		if res, err := nc.NodeList(); err != nil {
+		if res, err := nc.NodeList(*nodesCmdLimit, *nodesCmdSkip); err != nil {
 			log.Println(err)
 			return
 		} else {
