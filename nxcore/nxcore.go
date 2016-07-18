@@ -420,6 +420,15 @@ func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
 	return nc.Exec("sys.session.kick", par)
 }
 
+// SessionReload forces the node owner of the client connection to reload its info (tags)
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) SessionReload(connId string) (interface{}, error) {
+	par := map[string]interface{}{
+		"connId": connId,
+	}
+	return nc.Exec("sys.session.reload", par)
+}
+
 type NodeInfo struct {
 	Load    map[string]float64 `json:"load"`
 	Clients int                `json:"clients"`
