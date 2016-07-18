@@ -73,6 +73,9 @@ var (
 	userList       = userCmd.Command("list", "List users on a prefix")
 	userListPrefix = userList.Arg("prefix", "prefix").Default("").String()
 
+	userKick       = userCmd.Command("kick", "Kick users on a prefix")
+	userKickPrefix = userKick.Arg("prefix", "prefix").Required().String()
+
 	///
 
 	sessionsCmd = app.Command("sessions", "Show sessions info")
@@ -314,6 +317,22 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			log.Println("OK")
 		}
 
+	case userKick.FullCommand():
+		log.Printf("Kicking users on \"%s\"", *userKickPrefix)
+
+		if res, err := nc.SessionList(*userKickPrefix); err != nil {
+			log.Println(err)
+			return
+		} else {
+			for _, session := range res {
+				log.Printf("\tUser: [%s] - %d sessions", session.User, session.N)
+				for _, ses := range session.Sessions {
+					if kicked, err := nc.SessionKick(ses.Id); err == nil && ei.N(kicked).M("kicked").IntZ() == 1 {
+						log.Printf("\t\tID: %s has been kicked", ses.Id)
+					}
+				}
+			}
+		}
 	case sessionsList.FullCommand():
 		if res, err := nc.SessionList(*sessionsListPrefix); err != nil {
 			log.Println(err)
@@ -330,11 +349,11 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 		}
 
 	case sessionsKick.FullCommand():
-		if _, err := nc.SessionKick(*sessionsKickConn); err != nil {
+		if res, err := nc.SessionKick(*sessionsKickConn); err != nil {
 			log.Println(err)
 			return
 		} else {
-			log.Println("OK")
+			log.Println("Sessions kicked:", ei.N(res).M("kicked").IntZ())
 		}
 
 	case nodesCmd.FullCommand():
