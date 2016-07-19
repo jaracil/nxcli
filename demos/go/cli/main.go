@@ -79,18 +79,24 @@ var (
 
 	userKick       = userCmd.Command("kick", "Kick users on a prefix")
 	userKickPrefix = userKick.Arg("prefix", "prefix").Required().String()
+	
+	userReload = userCmd.Command("reload", "Reloads users on a prefix")
+	userReloadPrefix = userReload.Arg("prefix", "prefix").Required().String()
 
 	///
 
 	sessionsCmd = app.Command("sessions", "Show sessions info")
 
-	sessionsList       = sessionsCmd.Command("list", "list active sessions")
+	sessionsList       = sessionsCmd.Command("list", "List active sessions")
 	sessionsListPrefix = sessionsList.Arg("prefix", "User prefix").Default("").String()
 	sessionsListLimit  = sessionsList.Flag("limit", "Limit the number of sessions returned").Default("100").Int()
 	sessionsListSkip   = sessionsList.Flag("skip", "Skip a number of elements before applying the limit").Default("0").Int()
 
-	sessionsKick     = sessionsCmd.Command("kick", "kick any active connection with matching prefix")
+	sessionsKick     = sessionsCmd.Command("kick", "Kick any active connection with matching prefix")
 	sessionsKickConn = sessionsKick.Arg("connId", "connId prefix").Required().String()
+	
+	sessionsReload = sessionsCmd.Command("reload", "Reload any active connection with matching prefix")
+	sessionsReloadConn = sessionsReload.Arg("connId", "connId prefix").Required().String()
 
 	///
 
@@ -112,7 +118,7 @@ var (
 	tagsSetJPrefix   = tagsSetJ.Arg("prefix", "prefix").Required().String()
 	tagsSetJTagsJson = tagsSetJ.Arg("tags", "{'@task.push': true}").Required().String()
 
-	tagsDel       = tagsCmd.Command("del", "delete tags for an user on a prefix. Tags is a list of space separated strings")
+	tagsDel       = tagsCmd.Command("del", "Delete tags for an user on a prefix. Tags is a list of space separated strings")
 	tagsDelUser   = tagsDel.Arg("user", "user").Required().String()
 	tagsDelPrefix = tagsDel.Arg("prefix", "prefix").Required().String()
 	tagsDelTags   = tagsDel.Arg("tags", "tag1 tag2 tag3").Required().Strings()
@@ -341,6 +347,24 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 				}
 			}
 		}
+
+	case userReload.FullCommand():
+		log.Printf("Reloading users on \"%s\"", *userReloadPrefix)
+
+		if res, err := nc.SessionList(*userReloadPrefix, -1, -1); err != nil {
+			log.Println(err)
+			return
+		} else {
+			for _, session := range res {
+				log.Printf("\tUser: [%s] - %d sessions", session.User, session.N)
+				for _, ses := range session.Sessions {
+					if reloaded, err := nc.SessionReload(ses.Id); err == nil && ei.N(reloaded).M("reloaded").IntZ() == 1 {
+						log.Printf("\t\tID: %s has been reloaded", ses.Id)
+					}
+				}
+			}
+		}
+
 	case sessionsList.FullCommand():
 		if res, err := nc.SessionList(*sessionsListPrefix, *sessionsListLimit, *sessionsListSkip); err != nil {
 			log.Println(err)
@@ -362,6 +386,14 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			return
 		} else {
 			log.Println("Sessions kicked:", ei.N(res).M("kicked").IntZ())
+		}
+
+	case sessionsReload.FullCommand():
+		if res, err := nc.SessionReload(*sessionsReloadConn); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("Sessions reloaded:", ei.N(res).M("reloaded").IntZ())
 		}
 
 	case nodesCmd.FullCommand():
