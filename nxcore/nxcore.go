@@ -97,6 +97,7 @@ type JsonRpcRes struct {
 
 // NexusConn represents the Nexus connection.
 type NexusConn struct {
+	connId		string
 	conn         net.Conn
 	connRx       *smartio.SmartReader
 	connTx       *smartio.SmartWriter
@@ -368,8 +369,17 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 		"user": user,
 		"pass": pass,
 	}
-	return nc.Exec("sys.login", par)
+	res, err := nc.Exec("sys.login", par)
+	if err != nil {
+		return nil, err
+	}
+	nc.connId = ei.N(res).M("connId").StringZ()
+	return res, nil
+}
 
+// Id returns the connection id after a login.
+func (nc *NexusConn) Id() string {
+	return nc.connId
 }
 
 type UserSessions struct {
