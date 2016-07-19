@@ -97,7 +97,7 @@ type JsonRpcRes struct {
 
 // NexusConn represents the Nexus connection.
 type NexusConn struct {
-	connId		string
+	connId       string
 	conn         net.Conn
 	connRx       *smartio.SmartReader
 	connTx       *smartio.SmartWriter
@@ -154,8 +154,22 @@ type Msg struct {
 // PipeData represents a pipe messages group obtained in read ops.
 type PipeData struct {
 	Msgs    []*Msg // Messages
-	Waiting int    // Number of messages waiting in Nexus server since last read
-	Drops   int    // Number of messages dropped (pipe overflows) since last read
+	Waiting int        // Number of messages waiting in Nexus server since last read
+	Drops   int        // Number of messages dropped (pipe overflows) since last read
+}
+
+// TopicMsg represents a single topic message
+type TopicMsg struct {
+	Topic string      // Topic the message was published to
+	Count int64       // Message counter (unique and correlative)
+	Msg   interface{} // The message itself
+}
+
+// TopicData represents a topic messages group obtained in read ops.
+type TopicData struct {
+	Msgs    []*TopicMsg // Messages
+	Waiting int         // Number of messages waiting in Nexus server since last read
+	Drops   int         // Number of messages dropped (pipe overflows) since last read
 }
 
 // PipeOpts represents pipe creation options
@@ -795,6 +809,51 @@ func (p *Pipe) Read(max int, timeout time.Duration) (*PipeData, error) {
 	return &PipeData{Msgs: msgres, Waiting: waiting, Drops: drops}, nil
 }
 
+// TopicRead reads up to (max) topic messages from pipe or until timeout occurs.
+func (p *Pipe) TopicRead(max int, timeout time.Duration) (*TopicData, error) {
+	par := map[string]interface{}{
+		"pipeid":  p.pipeId,
+		"max":     max,
+		"timeout": float64(timeout) / float64(time.Second),
+	}
+	res, err := p.nc.Exec("pipe.read", par)
+	if err != nil {
+		return nil, err
+	}
+
+	msgres := make([]*TopicMsg, 0, 10)
+	waiting := ei.N(res).M("waiting").IntZ()
+	drops := ei.N(res).M("drops").IntZ()
+	messages, ok := ei.N(res).M("msgs").RawZ().([]interface{})
+	if !ok {
+		return nil, NewJsonRpcErr(ErrInternal, "", nil)
+	}
+
+	for _, msg := range messages {
+		msgd, err := ei.N(msg).M("msg").MapStr()
+		if err != nil {
+			return nil, NewJsonRpcErr(ErrInternal, "", nil)
+		}
+		topic, err := ei.N(msgd).M("topic").String()
+		if err != nil {
+			return nil, NewJsonRpcErr(ErrInternal, "", nil) 
+		}
+		msgmsg, err := ei.N(msgd).M("msg").Raw()
+		if err != nil {
+			return nil, NewJsonRpcErr(ErrInternal, "", nil) 
+		}
+		m := &TopicMsg{
+			Topic: topic,
+			Count: ei.N(msg).M("count").Int64Z(),
+			Msg:   msgmsg,
+		}
+
+		msgres = append(msgres, m)
+	}
+
+	return &TopicData{Msgs: msgres, Waiting: waiting, Drops: drops}, nil
+}
+
 // Listen returns a pipe reader channel.
 // ch is the channel used and returned by Listen, if ch is nil Listen creates a new unbuffered channel.
 // channel is closed when pipe is closed or error happens.
@@ -822,6 +881,32 @@ func (p *Pipe) Listen(ch chan *Msg) chan *Msg {
 	return ch
 }
 
+// TopicListen returns a pipe topic reader channel.
+// ch is the channel used and returned by Listen, if ch is nil Listen creates a new unbuffered channel.
+// channel is closed when pipe is closed or error happens.
+func (p *Pipe) TopicListen(ch chan *TopicMsg) chan *TopicMsg {
+	if ch == nil {
+		ch = make(chan *TopicMsg)
+	}
+	go func() {
+		for {
+			data, err := p.TopicRead(100000, 0)
+			if err != nil {
+				close(ch)
+				return
+			}
+			for _, msg := range data.Msgs {
+				select {
+				case ch <- msg:
+				case <-p.context.Done():
+					close(ch)
+					return
+				}
+			}
+		}
+	}()
+	return ch
+}
 // Id returns the pipe identification strring.
 func (p *Pipe) Id() string {
 	return p.pipeId
