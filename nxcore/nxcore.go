@@ -26,6 +26,7 @@ const (
 	ErrInvalidUser      = -32004
 	ErrUserExists       = -32005
 	ErrPermissionDenied = -32010
+	ErrTtlExpired       = -32011
 )
 
 var ErrStr = map[int]string{
@@ -41,6 +42,7 @@ var ErrStr = map[int]string{
 	ErrInvalidUser:      "Invalid user",
 	ErrUserExists:       "User already exists",
 	ErrPermissionDenied: "Permission denied",
+	ErrTtlExpired:       "TTL expired",
 }
 
 type JsonRpcErr struct {
@@ -95,6 +97,7 @@ type JsonRpcRes struct {
 
 // NexusConn represents the Nexus connection.
 type NexusConn struct {
+	connId       string
 	conn         net.Conn
 	connRx       *smartio.SmartReader
 	connTx       *smartio.SmartWriter
@@ -125,6 +128,8 @@ type Task struct {
 type TaskOpts struct {
 	// Task priority default 0 (Set negative value for lower priority)
 	Priority int
+	// Task ttl default 5
+	Ttl int
 	// Task detach. If true, task is detached from creating session.
 	// If task is detached and creating session deads, task is not removed from tasks queue.
 	Detach bool
@@ -149,8 +154,22 @@ type Msg struct {
 // PipeData represents a pipe messages group obtained in read ops.
 type PipeData struct {
 	Msgs    []*Msg // Messages
-	Waiting int    // Number of messages waiting in Nexus server since last read
-	Drops   int    // Number of messages dropped (pipe overflows) since last read
+	Waiting int        // Number of messages waiting in Nexus server since last read
+	Drops   int        // Number of messages dropped (pipe overflows) since last read
+}
+
+// TopicMsg represents a single topic message
+type TopicMsg struct {
+	Topic string      // Topic the message was published to
+	Count int64       // Message counter (unique and correlative)
+	Msg   interface{} // The message itself
+}
+
+// TopicData represents a topic messages group obtained in read ops.
+type TopicData struct {
+	Msgs    []*TopicMsg // Messages
+	Waiting int         // Number of messages waiting in Nexus server since last read
+	Drops   int         // Number of messages dropped (pipe overflows) since last read
 }
 
 // PipeOpts represents pipe creation options
@@ -364,8 +383,104 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 		"user": user,
 		"pass": pass,
 	}
-	return nc.Exec("sys.login", par)
+	res, err := nc.Exec("sys.login", par)
+	if err != nil {
+		return nil, err
+	}
+	nc.connId = ei.N(res).M("connId").StringZ()
+	return res, nil
+}
 
+// Id returns the connection id after a login.
+func (nc *NexusConn) Id() string {
+	return nc.connId
+}
+
+type UserSessions struct {
+	User     string        `json:"user"`
+	Sessions []SessionInfo `json:"sessions"`
+	N        int           `json:"n"`
+}
+
+type SessionInfo struct {
+	Id            string    `json:"id"`
+	NodeId        string    `json:"nodeId"`
+	RemoteAddress string    `json:"remoteAddress"`
+	Protocol      string    `json:"protocol"`
+	CreationTime  time.Time `json:"creationTime"`
+}
+
+// Sessions returns info of the users sessions
+// Returns a list of SessionInfo structs or an error
+func (nc *NexusConn) SessionList(prefix string, limit int, skip int) ([]UserSessions, error) {
+	par := map[string]interface{}{
+		"prefix": prefix,
+		"limit":  limit,
+		"skip":   skip,
+	}
+	res, err := nc.Exec("sys.session.list", par)
+	if err != nil {
+		return nil, err
+	}
+	sessions := make([]UserSessions, 0)
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, &sessions)
+	if err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+}
+
+// SessionKick forces the node owner of the client connection to close it
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
+	par := map[string]interface{}{
+		"connId": connId,
+	}
+	return nc.Exec("sys.session.kick", par)
+}
+
+// SessionReload forces the node owner of the client connection to reload its info (tags)
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) SessionReload(connId string) (interface{}, error) {
+	par := map[string]interface{}{
+		"connId": connId,
+	}
+	return nc.Exec("sys.session.reload", par)
+}
+
+type NodeInfo struct {
+	Load    map[string]float64 `json:"load"`
+	Clients int                `json:"clients"`
+	NodeId  string             `json:"id"`
+}
+
+// Nodes returns info of the nodes state
+// Returns a list of NodeInfo structs or an error
+func (nc *NexusConn) NodeList(limit int, skip int) ([]NodeInfo, error) {
+	par := map[string]interface{}{
+		"limit": limit,
+		"skip":  skip,
+	}
+	res, err := nc.Exec("sys.node.list", par)
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]NodeInfo, 0)
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, &nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	return nodes, nil
 }
 
 // TaskPush pushes a task to Nexus cloud.
@@ -382,6 +497,9 @@ func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Du
 	if len(opts) > 0 {
 		if opts[0].Priority != 0 {
 			par["prio"] = opts[0].Priority
+		}
+		if opts[0].Ttl != 0 {
+			par["ttl"] = opts[0].Ttl
 		}
 		if opts[0].Detach {
 			par["detach"] = true
@@ -444,6 +562,37 @@ func (nc *NexusConn) TaskPull(prefix string, timeout time.Duration) (*Task, erro
 	return task, nil
 }
 
+type TaskList struct {
+	Pulls  map[string]int `json:"pulls"`
+	Pushes map[string]int `json:"pushes"`
+}
+
+// TaskList returns how many push/pulls are happening on a path
+// prefix is the method prefix we want pull Ex. "test.fibonacci"
+// Returns a TaskList or error.
+func (nc *NexusConn) TaskList(prefix string, limit int, skip int) (*TaskList, error) {
+	par := map[string]interface{}{
+		"prefix": prefix,
+		"limit":  limit,
+		"skip":   skip,
+	}
+	res, err := nc.Exec("task.list", par)
+	if err != nil {
+		return nil, err
+	}
+	list := &TaskList{}
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, list)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
 // UserCreate creates new user in Nexus user's table.
 // Returns the response object from Nexus or error.
 func (nc *NexusConn) UserCreate(user, pass string) (interface{}, error) {
@@ -461,6 +610,36 @@ func (nc *NexusConn) UserDelete(user string) (interface{}, error) {
 		"user": user,
 	}
 	return nc.Exec("user.delete", par)
+}
+
+type UserInfo struct {
+	User string                            `json:"user"`
+	Tags map[string]map[string]interface{} `json:"tags"`
+}
+
+// UserList lists users from Nexus user's table.
+// Returns a list of UserInfo or error.
+func (nc *NexusConn) UserList(prefix string, limit int, skip int) ([]UserInfo, error) {
+	par := map[string]interface{}{
+		"prefix": prefix,
+		"limit":  limit,
+		"skip":   skip,
+	}
+	res, err := nc.Exec("user.list", par)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]UserInfo, 0)
+	b, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(b, &users)
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
 // UserSetTags set tags on user's prefix.
@@ -539,7 +718,7 @@ func (nc *NexusConn) TopicUnsubscribe(pipe *Pipe, topic string) (interface{}, er
 		"pipeid": pipe.Id(),
 		"topic":  topic,
 	}
-	return nc.Exec("chan.unsub", par)
+	return nc.Exec("topic.unsub", par)
 }
 
 // TopicPublish publishes message to a topic.
@@ -630,6 +809,51 @@ func (p *Pipe) Read(max int, timeout time.Duration) (*PipeData, error) {
 	return &PipeData{Msgs: msgres, Waiting: waiting, Drops: drops}, nil
 }
 
+// TopicRead reads up to (max) topic messages from pipe or until timeout occurs.
+func (p *Pipe) TopicRead(max int, timeout time.Duration) (*TopicData, error) {
+	par := map[string]interface{}{
+		"pipeid":  p.pipeId,
+		"max":     max,
+		"timeout": float64(timeout) / float64(time.Second),
+	}
+	res, err := p.nc.Exec("pipe.read", par)
+	if err != nil {
+		return nil, err
+	}
+
+	msgres := make([]*TopicMsg, 0, 10)
+	waiting := ei.N(res).M("waiting").IntZ()
+	drops := ei.N(res).M("drops").IntZ()
+	messages, ok := ei.N(res).M("msgs").RawZ().([]interface{})
+	if !ok {
+		return nil, NewJsonRpcErr(ErrInternal, "", nil)
+	}
+
+	for _, msg := range messages {
+		msgd, err := ei.N(msg).M("msg").MapStr()
+		if err != nil {
+			return nil, NewJsonRpcErr(ErrInternal, "", nil)
+		}
+		topic, err := ei.N(msgd).M("topic").String()
+		if err != nil {
+			return nil, NewJsonRpcErr(ErrInternal, "", nil) 
+		}
+		msgmsg, err := ei.N(msgd).M("msg").Raw()
+		if err != nil {
+			return nil, NewJsonRpcErr(ErrInternal, "", nil) 
+		}
+		m := &TopicMsg{
+			Topic: topic,
+			Count: ei.N(msg).M("count").Int64Z(),
+			Msg:   msgmsg,
+		}
+
+		msgres = append(msgres, m)
+	}
+
+	return &TopicData{Msgs: msgres, Waiting: waiting, Drops: drops}, nil
+}
+
 // Listen returns a pipe reader channel.
 // ch is the channel used and returned by Listen, if ch is nil Listen creates a new unbuffered channel.
 // channel is closed when pipe is closed or error happens.
@@ -657,6 +881,32 @@ func (p *Pipe) Listen(ch chan *Msg) chan *Msg {
 	return ch
 }
 
+// TopicListen returns a pipe topic reader channel.
+// ch is the channel used and returned by Listen, if ch is nil Listen creates a new unbuffered channel.
+// channel is closed when pipe is closed or error happens.
+func (p *Pipe) TopicListen(ch chan *TopicMsg) chan *TopicMsg {
+	if ch == nil {
+		ch = make(chan *TopicMsg)
+	}
+	go func() {
+		for {
+			data, err := p.TopicRead(100000, 0)
+			if err != nil {
+				close(ch)
+				return
+			}
+			for _, msg := range data.Msgs {
+				select {
+				case ch <- msg:
+				case <-p.context.Done():
+					close(ch)
+					return
+				}
+			}
+		}
+	}()
+	return ch
+}
 // Id returns the pipe identification strring.
 func (p *Pipe) Id() string {
 	return p.pipeId
