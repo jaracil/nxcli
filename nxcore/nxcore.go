@@ -391,6 +391,12 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 	return res, nil
 }
 
+// Reload forces the node owner of the client connection to reload its info (tags)
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) Reload() (interface{}, error) {
+	return nc.Exec("sys.reload", nil)
+}
+
 // Id returns the connection id after a login.
 func (nc *NexusConn) Id() string {
 	return nc.connId
