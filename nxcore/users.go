@@ -82,3 +82,32 @@ func (nc *NexusConn) UserSetPass(user string, pass string) (interface{}, error) 
 	}
 	return nc.Exec("user.setPass", par)
 }
+
+// UserAddTemplate adds a new template to the user.
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserAddTemplate(user, template string) (interface{}, error) {
+	par := map[string]interface{}{
+		"user":     user,
+		"template": template,
+	}
+	return nc.Exec("user.addTemplate", par)
+}
+
+// UserDelTemplate removes a template from the user.
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserDelTemplate(user, template string) (interface{}, error) {
+	par := map[string]interface{}{
+		"user":     user,
+		"template": template,
+	}
+	return nc.Exec("user.delTemplate", par)
+}
+
+// UserListTemplate returns the templates from the user.
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserListTemplate(user string) (interface{}, error) {
+	par := map[string]interface{}{
+		"user": user,
+	}
+	return nc.Exec("user.listTemplate", par)
+}

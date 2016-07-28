@@ -79,8 +79,8 @@ var (
 
 	userKick       = userCmd.Command("kick", "Kick users on a prefix")
 	userKickPrefix = userKick.Arg("prefix", "prefix").Required().String()
-	
-	userReload = userCmd.Command("reload", "Reloads users on a prefix")
+
+	userReload       = userCmd.Command("reload", "Reloads users on a prefix")
 	userReloadPrefix = userReload.Arg("prefix", "prefix").Required().String()
 
 	///
@@ -94,8 +94,8 @@ var (
 
 	sessionsKick     = sessionsCmd.Command("kick", "Kick any active connection with matching prefix")
 	sessionsKickConn = sessionsKick.Arg("connId", "connId prefix").Required().String()
-	
-	sessionsReload = sessionsCmd.Command("reload", "Reload any active connection with matching prefix")
+
+	sessionsReload     = sessionsCmd.Command("reload", "Reload any active connection with matching prefix")
 	sessionsReloadConn = sessionsReload.Arg("connId", "connId prefix").Required().String()
 
 	///
@@ -122,6 +122,21 @@ var (
 	tagsDelUser   = tagsDel.Arg("user", "user").Required().String()
 	tagsDelPrefix = tagsDel.Arg("prefix", "prefix").Required().String()
 	tagsDelTags   = tagsDel.Arg("tags", "tag1 tag2 tag3").Required().Strings()
+
+	//
+
+	templateCmd = app.Command("template", "template management")
+
+	templateAdd         = templateCmd.Command("add", "Add a template to the user")
+	templateAddUser     = templateAdd.Arg("user", "user").Required().String()
+	templateAddTemplate = templateAdd.Arg("template", "template").Required().String()
+
+	templateDel         = templateCmd.Command("del", "Removes a template from the user")
+	templateDelUser     = templateDel.Arg("user", "user").Required().String()
+	templateDelTemplate = templateDel.Arg("template", "template").Required().String()
+
+	templateList     = templateCmd.Command("list", "List the templates from the user")
+	templateListUser = templateList.Arg("user", "user").Required().String()
 
 	//
 
@@ -454,6 +469,51 @@ func execCmd(nc *nexus.NexusConn, parsed string) {
 			return
 		} else {
 			log.Println("OK")
+		}
+
+	case templateAdd.FullCommand():
+		if _, err := nc.UserAddTemplate(*templateAddUser, *templateAddTemplate); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("OK")
+		}
+
+	case templateDel.FullCommand():
+		if _, err := nc.UserDelTemplate(*templateDelUser, *templateDelTemplate); err != nil {
+			log.Println(err)
+			return
+		} else {
+			log.Println("OK")
+		}
+
+	case templateList.FullCommand():
+		if res, err := nc.UserListTemplate(*templateListUser); err != nil {
+			log.Println(err)
+			return
+		} else {
+
+			t1, ok := res.(map[string]interface{})
+			if !ok {
+				log.Println("Invalid result:", res)
+				return
+			}
+
+			templates, ok := t1["templates"].([]interface{})
+			if !ok {
+				log.Println("Invalid result:", res)
+				return
+			}
+
+			if len(templates) == 0 {
+				log.Println("No templates assigned")
+				return
+			}
+
+			log.Println(*templateListUser, "templates:")
+			for _, v := range templates {
+				log.Println("*", v)
+			}
 		}
 
 	case shell.FullCommand():
