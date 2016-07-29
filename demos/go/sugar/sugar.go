@@ -26,33 +26,9 @@ type ServiceOpts struct {
 // StatsPeriod defaults to 5 minutes
 // GracefulExitTime defaults to 20 seconds
 func NewService(server string, prefix string, opts *ServiceOpts) *service.Service {
-	var username string
-	var password string
-	if !strings.Contains(server, "://") {
-		server = "tcp://" + server
-	}
-	parsed, err := url.Parse(server)
-	if err == nil && parsed.User != nil {
-		username = parsed.User.Username()
-		password, _ = parsed.User.Password()
-	}
-	if opts == nil {
-		opts = &ServiceOpts{
-			Pulls:       1,
-			PullTimeout: time.Hour,
-			MaxThreads:  runtime.NumCPU(),
-		}
-	}
-	if opts.Pulls <= 0 {
-		opts.Pulls = 1
-	}
-	if opts.PullTimeout < 0 {
-		opts.PullTimeout = 0
-	}
-	if opts.MaxThreads <= 0 {
-		opts.MaxThreads = 1
-	}
-	return &service.Service{Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
+	server, username, password := parseServerUrl(server)
+	opts = populateOpts(opts)
+	return &service.Service{Name: "", Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
 }
 
 // ReplyToWrapper is a wrapper for methods
@@ -105,4 +81,40 @@ func IsNexusErrCode(err error, code int) bool {
 		return nexusErr.Cod == code
 	}
 	return false
+}
+
+// Get url, user and pass
+func parseServerUrl(server string) (string, string, string) {
+	var username string
+	var password string
+	if !strings.Contains(server, "://") {
+		server = "tcp://" + server
+	}
+	parsed, err := url.Parse(server)
+	if err == nil && parsed.User != nil {
+		username = parsed.User.Username()
+		password, _ = parsed.User.Password()
+	}
+	return server, username, password
+}
+
+// Set defaults for Opts
+func populateOpts(opts *ServiceOpts) *ServiceOpts {
+	if opts == nil {
+		opts = &ServiceOpts{
+			Pulls:       1,
+			PullTimeout: time.Hour,
+			MaxThreads:  runtime.NumCPU(),
+		}
+	}
+	if opts.Pulls <= 0 {
+		opts.Pulls = 1
+	}
+	if opts.PullTimeout < 0 {
+		opts.PullTimeout = 0
+	}
+	if opts.MaxThreads <= 0 {
+		opts.MaxThreads = 1
+	}
+	return opts
 }

@@ -97,6 +97,7 @@ type JsonRpcRes struct {
 
 // NexusConn represents the Nexus connection.
 type NexusConn struct {
+	connId       string
 	conn         net.Conn
 	connRx       *smartio.SmartReader
 	connTx       *smartio.SmartWriter
@@ -155,6 +156,20 @@ type PipeData struct {
 	Msgs    []*Msg // Messages
 	Waiting int    // Number of messages waiting in Nexus server since last read
 	Drops   int    // Number of messages dropped (pipe overflows) since last read
+}
+
+// TopicMsg represents a single topic message
+type TopicMsg struct {
+	Topic string      // Topic the message was published to
+	Count int64       // Message counter (unique and correlative)
+	Msg   interface{} // The message itself
+}
+
+// TopicData represents a topic messages group obtained in read ops.
+type TopicData struct {
+	Msgs    []*TopicMsg // Messages
+	Waiting int         // Number of messages waiting in Nexus server since last read
+	Drops   int         // Number of messages dropped (pipe overflows) since last read
 }
 
 // PipeOpts represents pipe creation options
@@ -368,357 +383,21 @@ func (nc *NexusConn) Login(user string, pass string) (interface{}, error) {
 		"user": user,
 		"pass": pass,
 	}
-	return nc.Exec("sys.login", par)
-
-}
-
-// TaskPush pushes a task to Nexus cloud.
-// method is the method path Ex. "test.fibonacci.fib"
-// params is the method params object.
-// timeout is the maximum time waiting for response, 0 = no timeout.
-// options (see TaskOpts struct)
-// Returns the task result or error.
-func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Duration, opts ...*TaskOpts) (interface{}, error) {
-	par := ei.M{
-		"method": method,
-		"params": params,
-	}
-	if len(opts) > 0 {
-		if opts[0].Priority != 0 {
-			par["prio"] = opts[0].Priority
-		}
-		if opts[0].Ttl != 0 {
-			par["ttl"] = opts[0].Ttl
-		}
-		if opts[0].Detach {
-			par["detach"] = true
-		}
-	}
-	if timeout > 0 {
-		par["timeout"] = float64(timeout) / float64(time.Second)
-	}
-	return nc.Exec("task.push", par)
-}
-
-// TaskPushCh pushes a task to Nexus cloud.
-// method is the method path Ex. "test.fibonacci.fib"
-// params is the method params object.
-// timeout is the maximum time waiting for response, 0 = no timeout.
-// options (see TaskOpts struct)
-// Returns two channels (one for result of interface{} type and one for error of error type).
-func (nc *NexusConn) TaskPushCh(method string, params interface{}, timeout time.Duration, opts ...*TaskOpts) (<-chan interface{}, <-chan error) {
-	chres := make(chan interface{}, 1)
-	cherr := make(chan error, 1)
-	go func() {
-		res, err := nc.TaskPush(method, params, timeout, opts...)
-		if err != nil {
-			cherr <- err
-		} else {
-			chres <- res
-		}
-
-	}()
-	return chres, cherr
-}
-
-// TaskPull pulls a task from Nexus cloud.
-// prefix is the method prefix we want pull Ex. "test.fibonacci"
-// timeout is the maximum time waiting for a task.
-// Returns a new incomming Task or error.
-func (nc *NexusConn) TaskPull(prefix string, timeout time.Duration) (*Task, error) {
-	par := map[string]interface{}{
-		"prefix": prefix,
-	}
-	if timeout > 0 {
-		par["timeout"] = float64(timeout) / float64(time.Second)
-	}
-	res, err := nc.Exec("task.pull", par)
+	res, err := nc.Exec("sys.login", par)
 	if err != nil {
 		return nil, err
 	}
-	t := ei.N(res)
-	task := &Task{
-		nc:     nc,
-		taskId: t.M("taskid").StringZ(),
-		Path:   t.M("path").StringZ(),
-		Method: t.M("method").StringZ(),
-		Params: t.M("params").RawZ(),
-		Tags:   t.M("tags").MapStrZ(),
-		Prio:   t.M("prio").IntZ(),
-		Detach: t.M("detach").BoolZ(),
-		User:   t.M("user").StringZ(),
-	}
-	return task, nil
+	nc.connId = ei.N(res).M("connId").StringZ()
+	return res, nil
 }
 
-// UserCreate creates new user in Nexus user's table.
+// Reload forces the node owner of the client connection to reload its info (tags)
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) UserCreate(user, pass string) (interface{}, error) {
-	par := map[string]interface{}{
-		"user": user,
-		"pass": pass,
-	}
-	return nc.Exec("user.create", par)
+func (nc *NexusConn) Reload() (interface{}, error) {
+	return nc.Exec("sys.reload", nil)
 }
 
-// UserDelete removes user from Nexus user's table.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) UserDelete(user string) (interface{}, error) {
-	par := map[string]interface{}{
-		"user": user,
-	}
-	return nc.Exec("user.delete", par)
-}
-
-// UserSetTags set tags on user's prefix.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) UserSetTags(user string, prefix string, tags map[string]interface{}) (interface{}, error) {
-	par := map[string]interface{}{
-		"user":   user,
-		"prefix": prefix,
-		"tags":   tags,
-	}
-	return nc.Exec("user.setTags", par)
-}
-
-// UserDelTags remove tags from user's prefix.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) UserDelTags(user string, prefix string, tags []string) (interface{}, error) {
-	par := map[string]interface{}{
-		"user":   user,
-		"prefix": prefix,
-		"tags":   tags,
-	}
-	return nc.Exec("user.delTags", par)
-}
-
-// UserSetPass sets new user password.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) UserSetPass(user string, pass string) (interface{}, error) {
-	par := map[string]interface{}{
-		"user": user,
-		"pass": pass,
-	}
-	return nc.Exec("user.setPass", par)
-}
-
-// PipeOpen Creates a new pipe from pipe identification string.
-// Returns the new pipe object or error.
-func (nc *NexusConn) PipeOpen(pipeId string) (*Pipe, error) {
-	pipe := &Pipe{
-		nc:     nc,
-		pipeId: pipeId,
-	}
-	pipe.context, pipe.cancelFun = context.WithCancel(nc.context)
-	return pipe, nil
-}
-
-// PipeCreate creates a new pipe.
-// Returns the new pipe object or error.
-func (nc *NexusConn) PipeCreate(opts ...*PipeOpts) (*Pipe, error) {
-	par := ei.M{}
-	if len(opts) > 0 {
-		if opts[0].Length > 0 {
-			par["len"] = opts[0].Length
-		}
-	}
-	res, err := nc.Exec("pipe.create", par)
-	if err != nil {
-		return nil, err
-	}
-	return nc.PipeOpen(ei.N(res).M("pipeid").StringZ())
-}
-
-// TopicSubscribe subscribes a pipe to a topic.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) TopicSubscribe(pipe *Pipe, topic string) (interface{}, error) {
-	par := ei.M{
-		"pipeid": pipe.Id(),
-		"topic":  topic,
-	}
-	return nc.Exec("topic.sub", par)
-}
-
-// TopicUnsubscribe unsubscribes a pipe from a topic.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) TopicUnsubscribe(pipe *Pipe, topic string) (interface{}, error) {
-	par := ei.M{
-		"pipeid": pipe.Id(),
-		"topic":  topic,
-	}
-	return nc.Exec("topic.unsub", par)
-}
-
-// TopicPublish publishes message to a topic.
-// Returns the response object from Nexus or error.
-func (nc *NexusConn) TopicPublish(topic string, msg interface{}) (interface{}, error) {
-	par := ei.M{
-		"topic": topic,
-		"msg":   msg,
-	}
-	return nc.Exec("topic.pub", par)
-}
-
-// Lock tries to get a lock.
-// Returns lock success/failure or error.
-func (nc *NexusConn) Lock(lock string) (bool, error) {
-	par := ei.M{
-		"lock": lock,
-	}
-	res, err := nc.Exec("sync.lock", par)
-	if err != nil {
-		return false, err
-	}
-	return ei.N(res).M("ok").BoolZ(), nil
-}
-
-// Unlock tries to free a lock.
-// Returns unlock success/failure or error.
-func (nc *NexusConn) Unlock(lock string) (bool, error) {
-	par := ei.M{
-		"lock": lock,
-	}
-	res, err := nc.Exec("sync.unlock", par)
-	if err != nil {
-		return false, err
-	}
-	return ei.N(res).M("ok").BoolZ(), nil
-}
-
-// Close closes pipe.
-// Returns the response object from Nexus or error.
-func (p *Pipe) Close() (interface{}, error) {
-	p.cancelFun()
-	par := map[string]interface{}{
-		"pipeid": p.pipeId,
-	}
-	return p.nc.Exec("pipe.close", par)
-}
-
-// Write writes message to pipe.
-// Returns the response object from Nexus or error.
-func (p *Pipe) Write(msg interface{}) (interface{}, error) {
-	par := map[string]interface{}{
-		"pipeid": p.pipeId,
-		"msg":    msg,
-	}
-	return p.nc.Exec("pipe.write", par)
-}
-
-// Read reads up to (max) messages from pipe or until timeout occurs.
-func (p *Pipe) Read(max int, timeout time.Duration) (*PipeData, error) {
-	par := map[string]interface{}{
-		"pipeid":  p.pipeId,
-		"max":     max,
-		"timeout": float64(timeout) / float64(time.Second),
-	}
-	res, err := p.nc.Exec("pipe.read", par)
-	if err != nil {
-		return nil, err
-	}
-
-	msgres := make([]*Msg, 0, 10)
-	waiting := ei.N(res).M("waiting").IntZ()
-	drops := ei.N(res).M("drops").IntZ()
-	messages, ok := ei.N(res).M("msgs").RawZ().([]interface{})
-	if !ok {
-		return nil, NewJsonRpcErr(ErrInternal, "", nil)
-	}
-
-	for _, msg := range messages {
-		m := &Msg{
-			Count: ei.N(msg).M("count").Int64Z(),
-			Msg:   ei.N(msg).M("msg").RawZ(),
-		}
-
-		msgres = append(msgres, m)
-	}
-
-	return &PipeData{Msgs: msgres, Waiting: waiting, Drops: drops}, nil
-}
-
-// Listen returns a pipe reader channel.
-// ch is the channel used and returned by Listen, if ch is nil Listen creates a new unbuffered channel.
-// channel is closed when pipe is closed or error happens.
-func (p *Pipe) Listen(ch chan *Msg) chan *Msg {
-	if ch == nil {
-		ch = make(chan *Msg)
-	}
-	go func() {
-		for {
-			data, err := p.Read(100000, 0)
-			if err != nil {
-				close(ch)
-				return
-			}
-			for _, msg := range data.Msgs {
-				select {
-				case ch <- msg:
-				case <-p.context.Done():
-					close(ch)
-					return
-				}
-			}
-		}
-	}()
-	return ch
-}
-
-// Id returns the pipe identification strring.
-func (p *Pipe) Id() string {
-	return p.pipeId
-}
-
-// SendResult closes Task with result.
-// Returns the response object from Nexus or error.
-func (t *Task) SendResult(res interface{}) (interface{}, error) {
-	par := map[string]interface{}{
-		"taskid": t.taskId,
-		"result": res,
-	}
-	return t.nc.Exec("task.result", par)
-}
-
-// SendError closes Task with error.
-// code is the JSON-RPC error code.
-// message is optional in case of well known error code (negative values).
-// data is an optional extra info object.
-// Returns the response object from Nexus or error.
-func (t *Task) SendError(code int, message string, data interface{}) (interface{}, error) {
-	if code < 0 {
-		if message != "" {
-			message = fmt.Sprintf("%s:[%s]", ErrStr[code], message)
-		} else {
-			message = ErrStr[code]
-		}
-	}
-	par := map[string]interface{}{
-		"taskid":  t.taskId,
-		"code":    code,
-		"message": message,
-		"data":    data,
-	}
-	return t.nc.Exec("task.error", par)
-}
-
-// Reject rejects the task. Task is returned to Nexus tasks queue.
-func (t *Task) Reject() (interface{}, error) {
-	par := map[string]interface{}{
-		"taskid": t.taskId,
-	}
-	return t.nc.Exec("task.reject", par)
-}
-
-// Accept accepts a detached task. Is an alias for SendResult(nil).
-func (t *Task) Accept() (interface{}, error) {
-	par := map[string]interface{}{
-		"taskid": t.taskId,
-		"result": nil,
-	}
-	return t.nc.Exec("task.result", par)
-}
-
-// GetConn retrieves the task underlying nexus connection.
-func (t *Task) GetConn() *NexusConn {
-	return t.nc
+// Id returns the connection id after a login.
+func (nc *NexusConn) Id() string {
+	return nc.connId
 }

@@ -21,6 +21,7 @@ import (
 )
 
 type Service struct {
+	Name             string
 	Server           string
 	User             string
 	Password         string
@@ -41,6 +42,7 @@ type Service struct {
 	stopping         bool
 	stopLock         *sync.Mutex
 	debugEnabled     bool
+	sharedConn       bool
 }
 
 type Method struct {
@@ -63,6 +65,14 @@ type Stats struct {
 // GetConn returns the underlying nexus connection
 func (s *Service) GetConn() *nexus.NexusConn {
 	return s.nc
+}
+
+// SetConn sets the underlying nexus connection.
+// Once SetConn is called, service url, user and password are ignored and the
+// provided connection is used on serve.
+func (s *Service) SetConn(nc *nexus.NexusConn) {
+	s.nc = nc
+	s.sharedConn = true
 }
 
 func (s *Service) addMethod(name string, schema string, f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) {
@@ -211,18 +221,32 @@ func (s *Service) Stop() {
 func (s *Service) Serve() error {
 	var err error
 
+	// Set log name
+	logn := s.Name
+	if logn == "" {
+		logn = "service"
+	}
+	logn = logn + ": "
+
+	svcn := s.Name
+	if svcn != "" {
+		svcn = svcn + ": "
+	}
+
 	// Set log level
 	s.SetLogLevel(s.LogLevel)
 
 	// Return an error if no methods where added
 	if s.methods == nil && s.handler == nil {
-		return fmt.Errorf("service: no methods to serve")
+		return fmt.Errorf("%sno methods to serve", logn)
 	}
 
 	// Parse url
-	_, err = url.Parse(s.Server)
-	if err != nil {
-		return fmt.Errorf("service: invalid nexus url (%s): %s", s.Server, err.Error())
+	if !s.sharedConn {
+		_, err = url.Parse(s.Server)
+		if err != nil {
+			return fmt.Errorf("%sinvalid nexus url (%s): %s", logn, s.Server, err.Error())
+		}
 	}
 
 	// Check service
@@ -253,31 +277,33 @@ func (s *Service) Serve() error {
 				var schres interface{}
 				err = json.Unmarshal([]byte(m.schemaSource), &schres)
 				if err != nil {
-					return fmt.Errorf("service: error parsing method (%s) schema: %s", mname, err.Error())
+					return fmt.Errorf("%serror parsing method (%s) schema: %s", logn, mname, err.Error())
 				}
 				m.schemaValidator, err = gojsonschema.NewSchema(gojsonschema.NewGoLoader(schres))
 				if err != nil {
-					return fmt.Errorf("service: error on method (%s) schema: %s", mname, err.Error())
+					return fmt.Errorf("%serror on method (%s) schema: %s", logn, mname, err.Error())
 				}
 				m.schema = schres
 			}
 		}
 	}
 
-	// Dial
-	s.nc, err = nxcli.Dial(s.Server, nxcli.NewDialOptions())
-	if err != nil {
-		return fmt.Errorf("service: can't connect to nexus server (%s): %s", s.Server, err.Error())
-	}
+	if !s.sharedConn {
+		// Dial
+		s.nc, err = nxcli.Dial(s.Server, nxcli.NewDialOptions())
+		if err != nil {
+			return fmt.Errorf("%scan't connect to nexus server (%s): %s", logn, s.Server, err.Error())
+		}
 
-	// Login
-	_, err = s.nc.Login(s.User, s.Password)
-	if err != nil {
-		return fmt.Errorf("service: can't login to nexus server (%s) as (%s): %s", s.Server, s.User, err.Error())
+		// Login
+		_, err = s.nc.Login(s.User, s.Password)
+		if err != nil {
+			return fmt.Errorf("%scan't login to nexus server (%s) as (%s): %s", logn, s.Server, s.User, err.Error())
+		}
 	}
 
 	// Output
-	Log.Infof("service: %s", s)
+	Log.Infof("%s%s", logn, s)
 
 	// Serve
 	s.wg = &sync.WaitGroup{}
@@ -289,20 +315,22 @@ func (s *Service) Serve() error {
 		s.threadsSem = newSemaphore(s.MaxThreads)
 	}
 	for i := 1; i < s.Pulls+1; i++ {
-		go s.taskPull(i)
+		go s.taskPull(i, svcn)
 	}
 
 	// Wait for signals
-	go func() {
-		signalChan := make(chan os.Signal, 1)
-		signal.Notify(signalChan, os.Interrupt)
-		<-signalChan
-		Log.Debugf("signal: received Ctrl+C: stop gracefuly")
-		s.GracefulStop()
-		<-signalChan
-		Log.Debugf("signal: received Ctrl+C again: stop")
-		s.Stop()
-	}()
+	if !s.sharedConn {
+		go func() {
+			signalChan := make(chan os.Signal, 1)
+			signal.Notify(signalChan, os.Interrupt)
+			<-signalChan
+			Log.Debugf("%ssignal: received Ctrl+C: stop gracefuly", svcn)
+			s.GracefulStop()
+			<-signalChan
+			Log.Debugf("%ssignal: received Ctrl+C again: stop", svcn)
+			s.Stop()
+		}()
+	}
 
 	// Wait until the nexus connection ends
 	gracefulTimeout := &time.Timer{}
@@ -317,7 +345,7 @@ func (s *Service) Serve() error {
 		case <-statsTicker.C:
 			if s.debugEnabled {
 				nst := s.GetStats()
-				Log.Debugf("stats: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
+				Log.Debugf("%sstats: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]", svcn, s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
 			}
 		case graceful = <-s.stopServeCh: // Someone called Stop() or GracefulStop()
 			if !graceful {
@@ -339,30 +367,30 @@ func (s *Service) Serve() error {
 			continue
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
-				Log.Debugf("stop: done")
+				Log.Debugf("%sstop: done", svcn)
 				return nil
 			}
 			s.nc.Close()
-			return fmt.Errorf("graceful: timeout after %s", s.GracefulExitTime.String())
+			return fmt.Errorf("%sgraceful: timeout after %s", svcn, s.GracefulExitTime.String())
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.isStopping() {
 				if graceful {
-					Log.Debugf("graceful: done")
+					Log.Debugf("%sgraceful: done", svcn)
 				} else {
-					Log.Debugf("stop: done")
+					Log.Debugf("%sstop: done", svcn)
 				}
 				return nil
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				return fmt.Errorf("stop: nexus connection ended: %s", ctxErr.Error())
+				return fmt.Errorf("%sstop: nexus connection ended: %s", ctxErr.Error(), svcn)
 			}
-			return fmt.Errorf("stop: nexus connection ended: stopped serving")
+			return fmt.Errorf("%sstop: nexus connection ended: stopped serving", svcn)
 		}
 	}
 	return nil
 }
 
-func (s *Service) taskPull(n int) {
+func (s *Service) taskPull(n int, svcn string) {
 	for {
 		// Exit if stopping serve
 		if s.isStopping() {
@@ -380,7 +408,7 @@ func (s *Service) taskPull(n int) {
 				continue
 			}
 			if !s.isStopping() || !util.IsNexusErrCode(err, nexus.ErrCancel) { // An error ocurred (bypass if cancelled because service stop)
-				Log.Errorf("pull %d: pulling task: %s", n, err.Error())
+				Log.Errorf("%spull %d: pulling task: %s", svcn, n, err.Error())
 			}
 			s.nc.Close()
 			s.threadsSem.Release()
@@ -389,7 +417,7 @@ func (s *Service) taskPull(n int) {
 
 		// A task has been pulled
 		atomic.AddUint64(&s.stats.tasksPulled, 1)
-		Log.Debugf("pull %d: task[ path=%s method=%s params=%+v tags=%+v ]", n, task.Path, task.Method, task.Params, task.Tags)
+		Log.Debugf("%spull %d: task[ path=%s method=%s params=%+v tags=%+v ]", svcn, n, task.Path, task.Method, task.Params, task.Tags)
 
 		// Get method or global handler
 		m := s.handler
@@ -420,7 +448,7 @@ func (s *Service) taskPull(n int) {
 					if !ok {
 						nerr = fmt.Errorf("pkg: %v", r)
 					}
-					Log.Errorf("pull %d: panic serving task: %s", n, nerr.Error())
+					Log.Errorf("%spull %d: panic serving task: %s", svcn, n, nerr.Error())
 					task.SendError(nexus.ErrInternal, nerr.Error(), nil)
 				}
 			}()
@@ -469,6 +497,9 @@ func (s *Service) GetStats() *Stats {
 
 // String returns some service info as a stirng
 func (s *Service) String() string {
+	if s.sharedConn {
+		return fmt.Sprintf("config[ conn=shared url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
+	}
 	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
 }
 
