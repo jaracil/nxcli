@@ -135,6 +135,12 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(r, e, cb)
 		}()
 	})
+	jsnc.Set("userSetTags", func(user string, prefix string, tags map[string]interface{}, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserSetTags(user, prefix, tags)
+			ret(r, e, cb)
+		}()
+	})
 	jsnc.Set("userDelTags", func(user string, prefix string, tags []string, cb ...*js.Object) {
 		go func() {
 			r, e := nc.UserDelTags(user, prefix, tags)
@@ -147,9 +153,51 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(r, e, cb)
 		}()
 	})
-	jsnc.Set("userSetTags", func(user string, prefix string, tags map[string]interface{}, cb ...*js.Object) {
+	jsnc.Set("userList", func(prefix string, limit int, skip int, cb ...*js.Object) {
 		go func() {
-			r, e := nc.UserSetTags(user, prefix, tags)
+			r, e := nc.UserList(prefix, limit, skip)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userAddTemplate", func(user string, template string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserAddTemplate(user, template)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userDelTemplate", func(user string, template string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserDelTemplate(user, template)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userListTemplate", func(user string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserListTemplate(user)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("sessionList", func(prefix string, limit int, skip int, cb ...*js.Object) {
+		go func() {
+			r, e := nc.SessionList(prefix, limit, skip)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("sessionKick", func(connId string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.SessionKick(connId)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("sessionReload", func(connId string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.SessionReload(connId)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("nodeList", func(limit int, skip int, cb ...*js.Object) {
+		go func() {
+			r, e := nc.NodeList(limit, skip)
 			ret(r, e, cb)
 		}()
 	})
@@ -178,7 +226,7 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 		go func() {
 			par := ei.M{
 				"pipeid": jspipe.Get("id").String(),
-				"topic":   topic,
+				"topic":  topic,
 			}
 			r, e := nc.Exec("topic.sub", par)
 			ret(r, e, cb)
@@ -188,7 +236,7 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 		go func() {
 			par := ei.M{
 				"pipeid": jspipe.Get("id").String(),
-				"topic":   topic,
+				"topic":  topic,
 			}
 			r, e := nc.Exec("topic.unsub", par)
 			ret(r, e, cb)
