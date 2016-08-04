@@ -123,6 +123,12 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(WrapTask(r), e, cb)
 		}()
 	})
+	jsnc.Set("taskList", func(prefix string, limit int, skip int, cb ...*js.Object) {
+		go func() {
+			r, e := nc.TaskList(prefix, limit, skip)
+			ret(r, e, cb)
+		}()
+	})
 	jsnc.Set("userCreate", func(user string, pass string, cb ...*js.Object) {
 		go func() {
 			r, e := nc.UserCreate(user, pass)
