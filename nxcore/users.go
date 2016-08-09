@@ -154,7 +154,7 @@ func (nc *NexusConn) UserDelBlacklist(user, ip string) (interface{}, error) {
 // UserSetMaxSessions set the maximum number of sessions a client can open
 // Setting the value lower than the current number of sessions won't kill any session
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) UserSetMaxSessions(user, sessions int) (interface{}, error) {
+func (nc *NexusConn) UserSetMaxSessions(user string, sessions int) (interface{}, error) {
 	par := map[string]interface{}{
 		"user":        user,
 		"maxsessions": sessions,
