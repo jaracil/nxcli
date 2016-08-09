@@ -113,15 +113,25 @@ type NexusConn struct {
 
 // Task represents a task pushed to Nexus.
 type Task struct {
-	nc     *NexusConn
-	taskId string
-	Path   string
-	Method string
-	Params interface{}
-	Prio   int
-	Detach bool
-	User   string
-	Tags   map[string]interface{}
+	nc           *NexusConn
+	Id           string                 `json:"id"`
+	Stat         string                 `json:"state""`
+	Path         string                 `json:"path"`
+	Prio         int                    `json:"priority"`
+	Ttl          int                    `json:"ttl"`
+	Detach       bool                   `json:"detached"`
+	User         string                 `json:"user"`
+	Method       string                 `json:"method"`
+	Params       interface{}            `json:"params"`
+	LocalId      interface{}            `json:"-"`
+	Tses         string                 `json:"targetSession"`
+	Result       interface{}            `json:"result"`
+	ErrCode      *int                   `json:"errCode"`
+	ErrStr       string                 `json:"errString"`
+	ErrObj       interface{}            `json:"errObject"`
+	Tags         map[string]interface{} `json:"tags"`
+	CreationTime time.Time              `json:"creationTime"`
+	DeadLine     time.Time              `json:"deadline"`
 }
 
 // TaskOpts represents task push options.

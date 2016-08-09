@@ -75,7 +75,7 @@ func (nc *NexusConn) TaskPull(prefix string, timeout time.Duration) (*Task, erro
 	t := ei.N(res)
 	task := &Task{
 		nc:     nc,
-		taskId: t.M("taskid").StringZ(),
+		Id:     t.M("taskid").StringZ(),
 		Path:   t.M("path").StringZ(),
 		Method: t.M("method").StringZ(),
 		Params: t.M("params").RawZ(),
@@ -117,7 +117,7 @@ func (nc *NexusConn) TaskList(prefix string, limit int, skip int) ([]Task, error
 // Returns the response object from Nexus or error.
 func (t *Task) SendResult(res interface{}) (interface{}, error) {
 	par := map[string]interface{}{
-		"taskid": t.taskId,
+		"taskid": t.Id,
 		"result": res,
 	}
 	return t.nc.Exec("task.result", par)
@@ -137,7 +137,7 @@ func (t *Task) SendError(code int, message string, data interface{}) (interface{
 		}
 	}
 	par := map[string]interface{}{
-		"taskid":  t.taskId,
+		"taskid":  t.Id,
 		"code":    code,
 		"message": message,
 		"data":    data,
@@ -148,7 +148,7 @@ func (t *Task) SendError(code int, message string, data interface{}) (interface{
 // Reject rejects the task. Task is returned to Nexus tasks queue.
 func (t *Task) Reject() (interface{}, error) {
 	par := map[string]interface{}{
-		"taskid": t.taskId,
+		"taskid": t.Id,
 	}
 	return t.nc.Exec("task.reject", par)
 }
@@ -156,7 +156,7 @@ func (t *Task) Reject() (interface{}, error) {
 // Accept accepts a detached task. Is an alias for SendResult(nil).
 func (t *Task) Accept() (interface{}, error) {
 	par := map[string]interface{}{
-		"taskid": t.taskId,
+		"taskid": t.Id,
 		"result": nil,
 	}
 	return t.nc.Exec("task.result", par)
