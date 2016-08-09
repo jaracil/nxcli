@@ -177,9 +177,33 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(r, e, cb)
 		}()
 	})
-	jsnc.Set("userListTemplate", func(user string, cb ...*js.Object) {
+	jsnc.Set("userAddWhitelist", func(user string, ip string, cb ...*js.Object) {
 		go func() {
-			r, e := nc.UserListTemplate(user)
+			r, e := nc.UserAddWhitelist(user, ip)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userDelWhitelist", func(user string, ip string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserDelWhitelist(user, ip)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userAddBlacklist", func(user string, ip string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserAddBlacklist(user, ip)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userDelBlacklist", func(user string, ip string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserDelBlacklist(user, ip)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("userSetMaxSessions", func(user string, max int, cb ...*js.Object) {
+		go func() {
+			r, e := nc.UserSetMaxSessions(user, max)
 			ret(r, e, cb)
 		}()
 	})
