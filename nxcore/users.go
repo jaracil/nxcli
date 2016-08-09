@@ -22,8 +22,12 @@ func (nc *NexusConn) UserDelete(user string) (interface{}, error) {
 }
 
 type UserInfo struct {
-	User string                            `json:"user"`
-	Tags map[string]map[string]interface{} `json:"tags"`
+	User        string                            `json:"user"`
+	Tags        map[string]map[string]interface{} `json:"tags"`
+	Templates   []string                          `json:"templates"`
+	Whitelist   []string                          `json:"whitelist"`
+	Blacklist   []string                          `json:"blacklist"`
+	MaxSessions int                               `json:"maxsessions"`
 }
 
 // UserList lists users from Nexus user's table.
@@ -103,11 +107,57 @@ func (nc *NexusConn) UserDelTemplate(user, template string) (interface{}, error)
 	return nc.Exec("user.delTemplate", par)
 }
 
-// UserListTemplate returns the templates from the user.
+// UserAddWhitelist adds an IP to the user's whitelist.
+// IP is a regex that will be matched against the client source address
 // Returns the response object from Nexus or error.
-func (nc *NexusConn) UserListTemplate(user string) (interface{}, error) {
+func (nc *NexusConn) UserAddWhitelist(user, ip string) (interface{}, error) {
 	par := map[string]interface{}{
 		"user": user,
+		"ip":   ip,
 	}
-	return nc.Exec("user.listTemplate", par)
+	return nc.Exec("user.addWhitelist", par)
+}
+
+// UserDelWhitelist removes an IP from the user's whitelist.
+// IP is a regex that will be matched against the client source address
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserDelWhitelist(user, ip string) (interface{}, error) {
+	par := map[string]interface{}{
+		"user": user,
+		"ip":   ip,
+	}
+	return nc.Exec("user.delWhitelist", par)
+}
+
+// UserAddBlacklist adds an IP to the user's blacklist.
+// IP is a regex that will be matched against the client source address
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserAddBlacklist(user, ip string) (interface{}, error) {
+	par := map[string]interface{}{
+		"user": user,
+		"ip":   ip,
+	}
+	return nc.Exec("user.addBlacklist", par)
+}
+
+// UserDelBlacklist removes an IP from the user's whitelist.
+// IP is a regex that will be matched against the client source address
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserDelBlacklist(user, ip string) (interface{}, error) {
+	par := map[string]interface{}{
+		"user": user,
+		"ip":   ip,
+	}
+	return nc.Exec("user.delBlacklist", par)
+}
+
+// UserSetMaxSessions set the maximum number of sessions a client can open
+// Setting the value lower than the current number of sessions won't kill any session
+// Returns the response object from Nexus or error.
+func (nc *NexusConn) UserSetMaxSessions(user, sessions int) (interface{}, error) {
+	par := map[string]interface{}{
+		"user":        user,
+		"maxsessions": sessions,
+	}
+	return nc.Exec("user.setMaxSessions", par)
 }
