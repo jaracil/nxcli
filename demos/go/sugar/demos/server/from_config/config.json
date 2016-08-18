@@ -1,0 +1,20 @@
+{
+    "server": {
+        "url": "localhost",
+        "user": "root",
+        "pass": "root",
+		"log-level": "debug"
+    },
+    "services": {
+        "service1": {
+            "path": "test.sugar.service1",
+			"pulls": 2,
+			"max-threads": 4
+        },
+        "service2": {
+            "path": "test.sugar.service2",
+			"pulls": 2,
+			"max-threads": 4
+        }
+    }
+}

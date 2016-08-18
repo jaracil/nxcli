@@ -15,9 +15,11 @@ import (
 )
 
 type ServiceOpts struct {
+	Path        string
 	Pulls       int
 	PullTimeout time.Duration
 	MaxThreads  int
+	Testing     bool
 }
 
 // NewService creates a new nexus service
@@ -25,10 +27,10 @@ type ServiceOpts struct {
 // Debug output is disabled by deafult
 // StatsPeriod defaults to 5 minutes
 // GracefulExitTime defaults to 20 seconds
-func NewService(server string, prefix string, opts *ServiceOpts) *service.Service {
-	server, username, password := parseServerUrl(server)
+func NewService(url string, opts *ServiceOpts) *service.Service {
+	url, username, password := parseServerUrl(url)
 	opts = populateOpts(opts)
-	return &service.Service{Name: "", Server: server, User: username, Password: password, Prefix: prefix, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExitTime: time.Second * 20}
+	return &service.Service{Name: "", Url: url, User: username, Pass: password, Path: opts.Path, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExit: time.Second * 20, Testing: opts.Testing}
 }
 
 // ReplyToWrapper is a wrapper for methods
@@ -53,16 +55,16 @@ func ReplyToWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func(*
 		t.Tags["@local@repliedTo"] = true
 		_, err := t.Accept()
 		if err != nil {
-			Log.Warnf("replyto wrapper: could not accept task: %s", err.Error())
+			Log(WarnLevel, "replyto wrapper", "could not accept task: %s", err.Error())
 		} else if repTy == "pipe" {
 			if pipe, err := t.GetConn().PipeOpen(repPath); err != nil {
-				Log.Warnf("replyto wrapper: could not open received pipeId (%s): %s", repPath, err.Error())
+				Log(WarnLevel, "replyto wrapper", "could not open received pipeId (%s): %s", repPath, err.Error())
 			} else if _, err = pipe.Write(map[string]interface{}{"result": res, "error": errm}); err != nil {
-				Log.Warnf("replyto wrapper: error writing response to pipe: %s", err.Error())
+				Log(WarnLevel, "replyto wrapper", "error writing response to pipe: %s", err.Error())
 			}
 		} else if repTy == "service" {
 			if _, err := t.GetConn().TaskPush(repPath, map[string]interface{}{"result": res, "error": errm}, time.Second*30, &nexus.TaskOpts{Detach: true}); err != nil {
-				Log.Warnf("replyto wrapper: could not push response task to received path (%s): %s", repPath, err.Error())
+				Log(WarnLevel, "replyto wrapper", "could not push response task to received path (%s): %s", repPath, err.Error())
 			}
 		}
 		return res, errm

@@ -21,28 +21,29 @@ import (
 )
 
 type Service struct {
-	Name             string
-	Server           string
-	User             string
-	Password         string
-	Prefix           string
-	Pulls            int
-	PullTimeout      time.Duration
-	MaxThreads       int
-	StatsPeriod      time.Duration
-	GracefulExitTime time.Duration
-	LogLevel         string
-	nc               *nexus.NexusConn
-	methods          map[string]*Method
-	handler          *Method
-	stats            *Stats
-	stopServeCh      chan (bool)
-	threadsSem       *Semaphore
-	wg               *sync.WaitGroup
-	stopping         bool
-	stopLock         *sync.Mutex
-	debugEnabled     bool
-	sharedConn       bool
+	Name         string
+	Url          string
+	User         string
+	Pass         string
+	Path         string
+	Pulls        int
+	PullTimeout  time.Duration
+	MaxThreads   int
+	StatsPeriod  time.Duration
+	GracefulExit time.Duration
+	LogLevel     string
+	Testing      bool
+	nc           *nexus.NexusConn
+	methods      map[string]*Method
+	handler      *Method
+	stats        *Stats
+	stopServeCh  chan (bool)
+	threadsSem   *Semaphore
+	wg           *sync.WaitGroup
+	stopping     bool
+	stopLock     *sync.Mutex
+	debugEnabled bool
+	sharedConn   bool
 }
 
 type Method struct {
@@ -135,7 +136,7 @@ func (s *Service) SetHandler(h func(*nexus.Task) (interface{}, *nexus.JsonRpcErr
 
 // SetUrl modifies the service url
 func (s *Service) SetUrl(url string) {
-	s.Server = url
+	s.Url = url
 }
 
 // SetUser modifies the service user
@@ -145,12 +146,12 @@ func (s *Service) SetUser(user string) {
 
 // SetPass modifies the service pass
 func (s *Service) SetPass(pass string) {
-	s.Password = pass
+	s.Pass = pass
 }
 
-// SetPrefix modifies the service prefix
-func (s *Service) SetPrefix(prefix string) {
-	s.Prefix = prefix
+// SetPrefix modifies the service path
+func (s *Service) SetPath(path string) {
+	s.Path = path
 }
 
 // SetPulls modifies the number of concurrent nexus.TaskPull calls
@@ -172,7 +173,7 @@ func (s *Service) SetPullTimeout(t time.Duration) {
 func (s *Service) SetLogLevel(t string) {
 	t = strings.ToLower(t)
 	SetLogLevel(t)
-	if Log.Level.String() == t {
+	if GetLogLevel() == t {
 		s.LogLevel = t
 		s.debugEnabled = t == "debug"
 	}
@@ -184,8 +185,18 @@ func (s *Service) SetStatsPeriod(t time.Duration) {
 }
 
 // SetGratefulExitTime sets the gracefull waiting time after a call to StopGraceful() is done
-func (s *Service) SetGracefulExitTime(t time.Duration) {
-	s.GracefulExitTime = t
+func (s *Service) SetGracefulExit(t time.Duration) {
+	s.GracefulExit = t
+}
+
+// SetTesting turns on or off the service testing mode
+func (s *Service) SetTesting(t bool) {
+	s.Testing = t
+}
+
+// IsTesting returns whether the service is in testing mode
+func (s *Service) IsTesting() bool {
+	return s.Testing
 }
 
 // GetMethods returns a list of the methods the service has
@@ -217,8 +228,8 @@ func (s *Service) Stop() {
 	}
 }
 
-// Serves connects to nexus, logins, and launches configured TaskPulls.
-func (s *Service) Serve() error {
+// Serve connects to nexus, logins, and launches configured TaskPulls.
+func (s *Service) Serve() bool {
 	var err error
 
 	// Set log name
@@ -226,26 +237,22 @@ func (s *Service) Serve() error {
 	if logn == "" {
 		logn = "service"
 	}
-	logn = logn + ": "
-
-	svcn := s.Name
-	if svcn != "" {
-		svcn = svcn + ": "
-	}
 
 	// Set log level
 	s.SetLogLevel(s.LogLevel)
 
 	// Return an error if no methods where added
 	if s.methods == nil && s.handler == nil {
-		return fmt.Errorf("%sno methods to serve", logn)
+		Log(ErrorLevel, logn, "no methods to serve")
+		return false
 	}
 
 	// Parse url
 	if !s.sharedConn {
-		_, err = url.Parse(s.Server)
+		_, err = url.Parse(s.Url)
 		if err != nil {
-			return fmt.Errorf("%sinvalid nexus url (%s): %s", logn, s.Server, err.Error())
+			Log(ErrorLevel, "server", "invalid nexus url (%s): %s", s.Url, err.Error())
+			return false
 		}
 	}
 
@@ -266,8 +273,8 @@ func (s *Service) Serve() error {
 			s.StatsPeriod = time.Millisecond * 100
 		}
 	}
-	if s.GracefulExitTime <= time.Second {
-		s.GracefulExitTime = time.Second
+	if s.GracefulExit <= time.Second {
+		s.GracefulExit = time.Second
 	}
 
 	// Check/create method schemas
@@ -277,11 +284,13 @@ func (s *Service) Serve() error {
 				var schres interface{}
 				err = json.Unmarshal([]byte(m.schemaSource), &schres)
 				if err != nil {
-					return fmt.Errorf("%serror parsing method (%s) schema: %s", logn, mname, err.Error())
+					Log(ErrorLevel, logn, "error parsing method (%s) schema: %s", mname, err.Error())
+					return false
 				}
 				m.schemaValidator, err = gojsonschema.NewSchema(gojsonschema.NewGoLoader(schres))
 				if err != nil {
-					return fmt.Errorf("%serror on method (%s) schema: %s", logn, mname, err.Error())
+					Log(ErrorLevel, logn, "error on method (%s) schema: %s", mname, err.Error())
+					return false
 				}
 				m.schema = schres
 			}
@@ -290,20 +299,22 @@ func (s *Service) Serve() error {
 
 	if !s.sharedConn {
 		// Dial
-		s.nc, err = nxcli.Dial(s.Server, nxcli.NewDialOptions())
+		s.nc, err = nxcli.Dial(s.Url, nxcli.NewDialOptions())
 		if err != nil {
-			return fmt.Errorf("%scan't connect to nexus server (%s): %s", logn, s.Server, err.Error())
+			Log(ErrorLevel, "server", "can't connect to nexus server (%s): %s", s.Url, err.Error())
+			return false
 		}
 
 		// Login
-		_, err = s.nc.Login(s.User, s.Password)
+		_, err = s.nc.Login(s.User, s.Pass)
 		if err != nil {
-			return fmt.Errorf("%scan't login to nexus server (%s) as (%s): %s", logn, s.Server, s.User, err.Error())
+			Log(ErrorLevel, "server", "can't login to nexus server (%s) as (%s): %s", s.Url, s.User, err.Error())
+			return false
 		}
 	}
 
 	// Output
-	Log.Infof("%s%s", logn, s)
+	Log(InfoLevel, logn, "%s", s)
 
 	// Serve
 	s.wg = &sync.WaitGroup{}
@@ -315,7 +326,7 @@ func (s *Service) Serve() error {
 		s.threadsSem = newSemaphore(s.MaxThreads)
 	}
 	for i := 1; i < s.Pulls+1; i++ {
-		go s.taskPull(i, svcn)
+		go s.taskPull(i, logn)
 	}
 
 	// Wait for signals
@@ -324,10 +335,10 @@ func (s *Service) Serve() error {
 			signalChan := make(chan os.Signal, 1)
 			signal.Notify(signalChan, os.Interrupt)
 			<-signalChan
-			Log.Debugf("%ssignal: received Ctrl+C: stop gracefuly", svcn)
+			Log(DebugLevel, "signal", "received SIGINT: stop gracefuly")
 			s.GracefulStop()
 			<-signalChan
-			Log.Debugf("%ssignal: received Ctrl+C again: stop", svcn)
+			Log(DebugLevel, "signal", "received SIGINT again: stop")
 			s.Stop()
 		}()
 	}
@@ -345,18 +356,18 @@ func (s *Service) Serve() error {
 		case <-statsTicker.C:
 			if s.debugEnabled {
 				nst := s.GetStats()
-				Log.Debugf("%sstats: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]", svcn, s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
+				Log(DebugLevel, logn, "stats: threads[ %d/%d ] task_pulls[ done=%d timeouts=%d ] tasks[ pulled=%d panic=%d errmethod=%d served=%d running=%d ]", s.threadsSem.Used(), s.threadsSem.Cap(), nst.taskPullsDone, nst.taskPullTimeouts, nst.tasksPulled, nst.tasksPanic, nst.tasksMethodNotFound, nst.tasksServed, nst.tasksRunning)
 			}
 		case graceful = <-s.stopServeCh: // Someone called Stop() or GracefulStop()
 			if !graceful {
+				s.setStopping()
 				s.nc.Close()
 				gracefulTimeout = time.NewTimer(time.Second)
-				s.setStopping()
 				continue
 			}
 			if !s.isStopping() {
 				s.setStopping()
-				gracefulTimeout = time.NewTimer(s.GracefulExitTime)
+				gracefulTimeout = time.NewTimer(s.GracefulExit)
 				go func() {
 					s.wg.Wait()
 					wgDoneCh <- true
@@ -367,30 +378,33 @@ func (s *Service) Serve() error {
 			continue
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
-				Log.Debugf("%sstop: done", svcn)
-				return nil
+				Log(DebugLevel, logn, "stop: done")
+				return true
 			}
 			s.nc.Close()
-			return fmt.Errorf("%sgraceful: timeout after %s", svcn, s.GracefulExitTime.String())
+			Log(ErrorLevel, logn, "graceful: timeout after %s", s.GracefulExit.String())
+			return false
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.isStopping() {
 				if graceful {
-					Log.Debugf("%sgraceful: done", svcn)
+					Log(DebugLevel, logn, "graceful: done")
 				} else {
-					Log.Debugf("%sstop: done", svcn)
+					Log(DebugLevel, logn, "stop: done")
 				}
-				return nil
+				return true
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				return fmt.Errorf("%sstop: nexus connection ended: %s", ctxErr.Error(), svcn)
+				Log(ErrorLevel, logn, "stop: nexus connection ended: %s", ctxErr.Error())
+				return false
 			}
-			return fmt.Errorf("%sstop: nexus connection ended: stopped serving", svcn)
+			Log(ErrorLevel, logn, "stop: nexus connection ended: stopped serving")
+			return false
 		}
 	}
-	return nil
+	return true
 }
 
-func (s *Service) taskPull(n int, svcn string) {
+func (s *Service) taskPull(n int, logn string) {
 	for {
 		// Exit if stopping serve
 		if s.isStopping() {
@@ -400,7 +414,7 @@ func (s *Service) taskPull(n int, svcn string) {
 		// Make a task pull
 		s.threadsSem.Acquire()
 		atomic.AddUint64(&s.stats.taskPullsDone, 1)
-		task, err := s.nc.TaskPull(s.Prefix, s.PullTimeout)
+		task, err := s.nc.TaskPull(s.Path, s.PullTimeout)
 		if err != nil {
 			if util.IsNexusErrCode(err, nexus.ErrTimeout) { // A timeout ocurred: pull again
 				atomic.AddUint64(&s.stats.taskPullTimeouts, 1)
@@ -408,7 +422,7 @@ func (s *Service) taskPull(n int, svcn string) {
 				continue
 			}
 			if !s.isStopping() || !util.IsNexusErrCode(err, nexus.ErrCancel) { // An error ocurred (bypass if cancelled because service stop)
-				Log.Errorf("%spull %d: pulling task: %s", svcn, n, err.Error())
+				Log(ErrorLevel, logn, "pull %d: pulling task: %s", n, err.Error())
 			}
 			s.nc.Close()
 			s.threadsSem.Release()
@@ -417,7 +431,7 @@ func (s *Service) taskPull(n int, svcn string) {
 
 		// A task has been pulled
 		atomic.AddUint64(&s.stats.tasksPulled, 1)
-		Log.Debugf("%spull %d: task[ path=%s method=%s params=%+v tags=%+v ]", svcn, n, task.Path, task.Method, task.Params, task.Tags)
+		Log(DebugLevel, logn, "pull %d: task[ path=%s method=%s params=%+v tags=%+v ]", n, task.Path, task.Method, task.Params, task.Tags)
 
 		// Get method or global handler
 		m := s.handler
@@ -448,7 +462,7 @@ func (s *Service) taskPull(n int, svcn string) {
 					if !ok {
 						nerr = fmt.Errorf("pkg: %v", r)
 					}
-					Log.Errorf("%spull %d: panic serving task: %s", svcn, n, nerr.Error())
+					Log(ErrorLevel, logn, "pull %d: panic serving task: %s", n, nerr.Error())
 					task.SendError(nexus.ErrInternal, nerr.Error(), nil)
 				}
 			}()
@@ -495,12 +509,17 @@ func (s *Service) GetStats() *Stats {
 	}
 }
 
+// Log
+func (s *Service) Log(level string, message string, args ...interface{}) {
+	Log(level, s.Name, message, args...)
+}
+
 // String returns some service info as a stirng
 func (s *Service) String() string {
 	if s.sharedConn {
-		return fmt.Sprintf("config[ conn=shared url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
+		return fmt.Sprintf("config: url=%s path=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s", s.Url, s.Path, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExit.String())
 	}
-	return fmt.Sprintf("config[ url=%s prefix=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s ]", s.Server, s.Prefix, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExitTime.String())
+	return fmt.Sprintf("config: url=%s path=%s methods=%+v pulls=%d pullTimeout=%s maxThreads=%d logLevel=%s statsPeriod=%s gracefulExit=%s", s.Url, s.Path, s.GetMethods(), s.Pulls, s.PullTimeout.String(), s.MaxThreads, s.LogLevel, s.StatsPeriod.String(), s.GracefulExit.String())
 }
 
 func (s *Service) isStopping() bool {

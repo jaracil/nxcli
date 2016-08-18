@@ -1,0 +1,13 @@
+{
+    "server": {
+        "url": "localhost",
+        "user": "root",
+        "pass": "root",
+		"log-level": "debug"
+    },
+    "services": {
+        "handler": {
+            "path": "test.sugar.handler"
+        }
+    }
+}

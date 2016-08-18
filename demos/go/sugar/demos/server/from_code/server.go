@@ -5,20 +5,20 @@ import (
 
 	"github.com/jaracil/ei"
 	"github.com/jaracil/nxcli/demos/go/sugar"
-	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
 func main() {
 	// Server sets defaults for all services
-	server := sugar.NewServer("root:root@localhost", &sugar.ServiceOpts{4, time.Hour, 12})
+	server := sugar.NewServer("root:root@localhost")
 	server.SetLogLevel("debug")
 
 	// Each service can sets its own options
-	service1 := server.AddService("service1", "test.sugar.service1", &sugar.ServiceOpts{2, time.Hour, 4})
+	service1, _ := server.AddService("service1", &sugar.ServiceOpts{"test.sugar.service1", 2, time.Hour, 4, false})
+	service1.SetStatsPeriod(time.Second * 10)
 
 	// Or get the server default options
-	service2 := server.AddService("service2", "test.sugar.service2", nil)
+	service2, _ := server.AddService("service2", &sugar.ServiceOpts{"test.sugar.service2", 2, time.Hour, 4, false})
 	service2.SetStatsPeriod(time.Second * 10)
 
 	// A method that computes fibonacci on both services
@@ -45,8 +45,5 @@ func main() {
 	service2.AddMethod("fib", fib)
 
 	// Serve
-	err := server.Serve()
-	if err != nil {
-		Log.Errorln(err.Error())
-	}
+	server.Serve()
 }

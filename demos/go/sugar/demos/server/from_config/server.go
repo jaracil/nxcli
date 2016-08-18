@@ -9,13 +9,24 @@ import (
 )
 
 func main() {
-	// Service
-	s := sugar.NewService("root:root@localhost", &sugar.ServiceOpts{"test.sugar.fibsrv", 4, time.Hour, 12, false})
-	s.SetLogLevel("debug")
-	s.SetStatsPeriod(time.Second * 5)
+	// Server sets defaults for all services
+	server, ok := sugar.NewServerFromConfig()
+	if !ok {
+		return
+	}
 
-	// A method that computes fibonacci
-	s.AddMethod("fib", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+	service1, ok := server.AddService("service1", nil)
+	if !ok {
+		return
+	}
+
+	service2, ok := server.AddService("service2", nil)
+	if !ok {
+		return
+	}
+
+	// A method that computes fibonacci on both services
+	fib := func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		// Parse params
 		v, err := ei.N(task.Params).M("v").Int()
 		if err != nil {
@@ -32,8 +43,11 @@ func main() {
 			r = append(r, i)
 		}
 		return r, nil
-	})
+	}
+
+	service1.AddMethod("fib", fib)
+	service2.AddMethod("fib", fib)
 
 	// Serve
-	s.Serve()
+	server.Serve()
 }

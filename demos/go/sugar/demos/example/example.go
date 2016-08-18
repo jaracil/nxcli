@@ -5,16 +5,13 @@ import (
 
 	"github.com/jaracil/ei"
 	"github.com/jaracil/nxcli/demos/go/sugar"
-	"github.com/jaracil/nxcli/demos/go/sugar/config"
-	. "github.com/jaracil/nxcli/demos/go/sugar/log"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
 func main() {
 	// Service
-	s, err := config.NewService()
-	if err != nil {
-		Log.Errorln(err.Error())
+	s, ok := sugar.NewServiceFromConfig("example")
+	if !ok {
 		return
 	}
 
@@ -38,7 +35,6 @@ func main() {
 	})
 
 	// A method that calls GracefulStop()
-	s.SetGracefulExitTime(time.Second * 10) // Wait nexus connection and workers for 10 seconds
 	s.AddMethod("gracefulExit", func(task *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
 		go func() {
 			s.GracefulStop()
@@ -67,8 +63,5 @@ func main() {
 	})
 
 	// Serve
-	err = s.Serve()
-	if err != nil {
-		Log.Errorln(err.Error())
-	}
+	s.Serve()
 }
