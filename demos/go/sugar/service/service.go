@@ -511,7 +511,11 @@ func (s *Service) GetStats() *Stats {
 
 // Log
 func (s *Service) Log(level string, message string, args ...interface{}) {
-	Log(level, s.Name, message, args...)
+	logn := s.Name
+	if logn == "" {
+		logn = "service"
+	}
+	Log(level, logn, message, args...)
 }
 
 // String returns some service info as a stirng
