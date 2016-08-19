@@ -8,7 +8,6 @@ import (
 
 	"github.com/jaracil/ei"
 	. "github.com/jaracil/nxcli/demos/go/sugar/log"
-	"github.com/jaracil/nxcli/demos/go/sugar/service"
 	flag "github.com/ogier/pflag"
 )
 
@@ -31,6 +30,10 @@ type ServiceConfig struct {
 	Pulls       int
 	PullTimeout float64
 	MaxThreads  int
+}
+
+type ServerFromConfig struct {
+	Server
 }
 
 var config map[string]interface{}
@@ -232,39 +235,57 @@ func parseConfig() error {
 }
 
 // NewServerFromConfig creates a new nexus server from config to which services can be added
-func NewServerFromConfig() (*Server, bool) {
+func NewServerFromConfig() (*ServerFromConfig, error) {
 	if err := parseConfig(); err != nil {
 		Log(ErrorLevel, "config", err.Error())
-		return nil, false
+		return nil, err
 	}
-	return &Server{
-		Url:          configServer.Url,
-		User:         configServer.User,
-		Pass:         configServer.Pass,
-		Pulls:        configServer.Pulls,
-		PullTimeout:  time.Duration(configServer.PullTimeout * float64(time.Second)),
-		MaxThreads:   configServer.MaxThreads,
-		LogLevel:     configServer.LogLevel,
-		StatsPeriod:  time.Duration(configServer.StatsPeriod * float64(time.Second)),
-		GracefulExit: time.Duration(configServer.GracefulExit * float64(time.Second)),
-		Testing:      configServer.Testing,
-		services:     map[string]*service.Service{},
-		fromConfig:   true,
-	}, true
+	return &ServerFromConfig{
+		Server{
+			Url:          configServer.Url,
+			User:         configServer.User,
+			Pass:         configServer.Pass,
+			Pulls:        configServer.Pulls,
+			PullTimeout:  time.Duration(configServer.PullTimeout * float64(time.Second)),
+			MaxThreads:   configServer.MaxThreads,
+			LogLevel:     configServer.LogLevel,
+			StatsPeriod:  time.Duration(configServer.StatsPeriod * float64(time.Second)),
+			GracefulExit: time.Duration(configServer.GracefulExit * float64(time.Second)),
+			Testing:      configServer.Testing,
+			services:     map[string]*Service{},
+		},
+	}, nil
+}
+
+// AddServiceFromConfig adds services to a server from config
+func (s *ServerFromConfig) AddService(name string) (*Service, error) {
+	if s.services == nil {
+		s.services = map[string]*Service{}
+	}
+	svcfg, ok := configServer.Services[name]
+	if !ok {
+		err := fmt.Errorf(MissingConfigErr, "services."+name)
+		Log(ErrorLevel, "config", err.Error())
+		return nil, err
+	}
+	svc := &Service{Name: name, Url: s.Url, User: s.User, Pass: s.Pass, Path: svcfg.Path, Pulls: svcfg.Pulls, PullTimeout: time.Duration(svcfg.PullTimeout * float64(time.Second)), MaxThreads: svcfg.MaxThreads, LogLevel: s.LogLevel, StatsPeriod: s.StatsPeriod, GracefulExit: s.GracefulExit, Testing: s.Testing}
+	s.services[name] = svc
+	return svc, nil
 }
 
 // NewServiceFromConfig creates a new nexus service from config
-func NewServiceFromConfig(name string) (*service.Service, bool) {
+func NewServiceFromConfig(name string) (*Service, error) {
 	if err := parseConfig(); err != nil {
 		Log(ErrorLevel, "config", err.Error())
-		return nil, false
+		return nil, err
 	}
 	svc, ok := configServer.Services[name]
 	if !ok {
-		Log(ErrorLevel, "config", MissingConfigErr, "services."+name)
-		return nil, false
+		err := fmt.Errorf(MissingConfigErr, "services."+name)
+		Log(ErrorLevel, "config", err.Error())
+		return nil, err
 	}
-	return &service.Service{
+	return &Service{
 		Name:         name,
 		Url:          configServer.Url,
 		User:         configServer.User,
@@ -277,14 +298,14 @@ func NewServiceFromConfig(name string) (*service.Service, bool) {
 		StatsPeriod:  time.Duration(float64(time.Second) * configServer.StatsPeriod),
 		GracefulExit: time.Duration(float64(time.Second) * configServer.GracefulExit),
 		Testing:      configServer.Testing,
-	}, true
+	}, nil
 }
 
 // GetConfig retrieves the parsed configuration
-func GetConfig() (map[string]interface{}, bool) {
+func GetConfig() (map[string]interface{}, error) {
 	if err := parseConfig(); err != nil {
 		Log(ErrorLevel, "config", err.Error())
-		return nil, false
+		return nil, err
 	}
-	return config, true
+	return config, nil
 }

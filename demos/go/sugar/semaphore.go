@@ -1,4 +1,4 @@
-package service
+package sugar
 
 type Semaphore struct {
 	ch chan struct{}

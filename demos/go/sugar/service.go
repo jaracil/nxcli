@@ -1,5 +1,4 @@
-// Package service is boilerplate code for making nexus services.
-package service
+package sugar
 
 import (
 	"encoding/json"
@@ -11,12 +10,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"runtime"
 
 	"github.com/xeipuuv/gojsonschema"
 
+	"github.com/jaracil/ei"
 	nxcli "github.com/jaracil/nxcli"
 	. "github.com/jaracil/nxcli/demos/go/sugar/log"
-	"github.com/jaracil/nxcli/demos/go/sugar/util"
 	nexus "github.com/jaracil/nxcli/nxcore"
 )
 
@@ -62,6 +62,61 @@ type Stats struct {
 	tasksMethodNotFound uint64
 	tasksRunning        uint64
 }
+
+type ServiceOpts struct {
+	Pulls       int
+	PullTimeout time.Duration
+	MaxThreads  int
+	Testing     bool
+}
+
+// NewService creates a new nexus service
+// If passed ServiceOpts is nil the defaults are 1 pull, an hour of pullTimeout and runtime.NumCPU() maxThreads
+// Debug output is disabled by deafult
+// StatsPeriod defaults to 5 minutes
+// GracefulExitTime defaults to 20 seconds
+func NewService(url string, path string, opts *ServiceOpts) *Service {
+	url, username, password := parseServerUrl(url)
+	opts = populateOpts(opts)
+	return &Service{Name: "", Url: url, User: username, Pass: password, Path: path, Pulls: opts.Pulls, PullTimeout: opts.PullTimeout, MaxThreads: opts.MaxThreads, LogLevel: "info", StatsPeriod: time.Minute * 5, GracefulExit: time.Second * 20, Testing: opts.Testing}
+}
+
+// Set defaults for Opts
+func populateOpts(opts *ServiceOpts) *ServiceOpts {
+	if opts == nil {
+		opts = &ServiceOpts{
+			Pulls:       1,
+			PullTimeout: time.Hour,
+			MaxThreads:  runtime.NumCPU(),
+		}
+	}
+	if opts.Pulls <= 0 {
+		opts.Pulls = 1
+	}
+	if opts.PullTimeout < 0 {
+		opts.PullTimeout = 0
+	}
+	if opts.MaxThreads <= 0 {
+		opts.MaxThreads = 1
+	}
+	return opts
+}
+
+// Get url, user and pass
+func parseServerUrl(server string) (string, string, string) {
+	var username string
+	var password string
+	if !strings.Contains(server, "://") {
+		server = "tcp://" + server
+	}
+	parsed, err := url.Parse(server)
+	if err == nil && parsed.User != nil {
+		username = parsed.User.Username()
+		password, _ = parsed.User.Password()
+	}
+	return server, username, password
+}
+
 
 // GetConn returns the underlying nexus connection
 func (s *Service) GetConn() *nexus.NexusConn {
@@ -111,6 +166,44 @@ func defMethodWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func
 		} else {
 			t.SendResult(res)
 		}
+	}
+}
+
+// ReplyToWrapper is a wrapper for methods
+// If a replyTo map parameter is set with a type parameter (with "pipe" or "service" values) and a path
+// parameter with the service path or pipeId to respond to, the usual SendError/SendResult pattern will
+// be skipped and the answer will go to the pipe or service specified after doing an Accept() to the task.
+func ReplyToWrapper(f func(*nexus.Task) (interface{}, *nexus.JsonRpcErr)) func(*nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+	return func(t *nexus.Task) (interface{}, *nexus.JsonRpcErr) {
+		var repTy, repPath string
+		var ok bool
+		if replyTo, err := ei.N(t.Params).M("replyTo").MapStr(); err != nil {
+			return f(t)
+		} else {
+			if repPath, ok = replyTo["path"].(string); !ok {
+				return f(t)
+			}
+			if repTy, ok = replyTo["type"].(string); !ok || (repTy != "pipe" && repTy != "service") {
+				return f(t)
+			}
+		}
+		res, errm := f(t)
+		t.Tags["@local@repliedTo"] = true
+		_, err := t.Accept()
+		if err != nil {
+			Log(WarnLevel, "replyto wrapper", "could not accept task: %s", err.Error())
+		} else if repTy == "pipe" {
+			if pipe, err := t.GetConn().PipeOpen(repPath); err != nil {
+				Log(WarnLevel, "replyto wrapper", "could not open received pipeId (%s): %s", repPath, err.Error())
+			} else if _, err = pipe.Write(map[string]interface{}{"result": res, "error": errm}); err != nil {
+				Log(WarnLevel, "replyto wrapper", "error writing response to pipe: %s", err.Error())
+			}
+		} else if repTy == "service" {
+			if _, err := t.GetConn().TaskPush(repPath, map[string]interface{}{"result": res, "error": errm}, time.Second*30, &nexus.TaskOpts{Detach: true}); err != nil {
+				Log(WarnLevel, "replyto wrapper", "could not push response task to received path (%s): %s", repPath, err.Error())
+			}
+		}
+		return res, errm
 	}
 }
 
@@ -229,7 +322,7 @@ func (s *Service) Stop() {
 }
 
 // Serve connects to nexus, logins, and launches configured TaskPulls.
-func (s *Service) Serve() bool {
+func (s *Service) Serve() error {
 	var err error
 
 	// Set log name
@@ -243,16 +336,18 @@ func (s *Service) Serve() bool {
 
 	// Return an error if no methods where added
 	if s.methods == nil && s.handler == nil {
-		Log(ErrorLevel, logn, "no methods to serve")
-		return false
+		err = fmt.Errorf("no methods to serve")
+		Log(ErrorLevel, logn, err.Error())
+		return err
 	}
 
 	// Parse url
 	if !s.sharedConn {
 		_, err = url.Parse(s.Url)
 		if err != nil {
-			Log(ErrorLevel, "server", "invalid nexus url (%s): %s", s.Url, err.Error())
-			return false
+			err = fmt.Errorf("invalid nexus url (%s): %s", s.Url, err.Error())
+			Log(ErrorLevel, "server", err.Error())
+			return err
 		}
 	}
 
@@ -284,13 +379,15 @@ func (s *Service) Serve() bool {
 				var schres interface{}
 				err = json.Unmarshal([]byte(m.schemaSource), &schres)
 				if err != nil {
-					Log(ErrorLevel, logn, "error parsing method (%s) schema: %s", mname, err.Error())
-					return false
+					err = fmt.Errorf("error parsing method (%s) schema: %s", mname, err.Error())
+					Log(ErrorLevel, logn, err.Error())
+					return err
 				}
 				m.schemaValidator, err = gojsonschema.NewSchema(gojsonschema.NewGoLoader(schres))
 				if err != nil {
-					Log(ErrorLevel, logn, "error on method (%s) schema: %s", mname, err.Error())
-					return false
+					err = fmt.Errorf("error on method (%s) schema: %s", mname, err.Error())
+					Log(ErrorLevel, logn, err.Error())
+					return err
 				}
 				m.schema = schres
 			}
@@ -301,15 +398,17 @@ func (s *Service) Serve() bool {
 		// Dial
 		s.nc, err = nxcli.Dial(s.Url, nxcli.NewDialOptions())
 		if err != nil {
-			Log(ErrorLevel, "server", "can't connect to nexus server (%s): %s", s.Url, err.Error())
-			return false
+			err = fmt.Errorf("can't connect to nexus server (%s): %s", s.Url, err.Error())
+			Log(ErrorLevel, "server", err.Error())
+			return err
 		}
 
 		// Login
 		_, err = s.nc.Login(s.User, s.Pass)
 		if err != nil {
-			Log(ErrorLevel, "server", "can't login to nexus server (%s) as (%s): %s", s.Url, s.User, err.Error())
-			return false
+			err = fmt.Errorf("can't login to nexus server (%s) as (%s): %s", s.Url, s.User, err.Error())
+			Log(ErrorLevel, "server", err.Error())
+			return err
 		}
 	}
 
@@ -379,11 +478,12 @@ func (s *Service) Serve() bool {
 		case <-gracefulTimeout.C: // Graceful timeout
 			if !graceful {
 				Log(DebugLevel, logn, "stop: done")
-				return true
+				return nil
 			}
 			s.nc.Close()
-			Log(ErrorLevel, logn, "graceful: timeout after %s", s.GracefulExit.String())
-			return false
+			err = fmt.Errorf("graceful: timeout after %s", s.GracefulExit.String())
+			Log(ErrorLevel, logn, err.Error())
+			return err
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
 			if s.isStopping() {
 				if graceful {
@@ -391,17 +491,19 @@ func (s *Service) Serve() bool {
 				} else {
 					Log(DebugLevel, logn, "stop: done")
 				}
-				return true
+				return nil
 			}
 			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				Log(ErrorLevel, logn, "stop: nexus connection ended: %s", ctxErr.Error())
-				return false
+				err = fmt.Errorf("stop: nexus connection ended: %s", ctxErr.Error())
+				Log(ErrorLevel, logn, err.Error())
+				return err
 			}
-			Log(ErrorLevel, logn, "stop: nexus connection ended: stopped serving")
-			return false
+			err = fmt.Errorf("stop: nexus connection ended: stopped serving")
+			Log(ErrorLevel, logn, err.Error())
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
 func (s *Service) taskPull(n int, logn string) {
@@ -416,12 +518,12 @@ func (s *Service) taskPull(n int, logn string) {
 		atomic.AddUint64(&s.stats.taskPullsDone, 1)
 		task, err := s.nc.TaskPull(s.Path, s.PullTimeout)
 		if err != nil {
-			if util.IsNexusErrCode(err, nexus.ErrTimeout) { // A timeout ocurred: pull again
+			if IsNexusErrCode(err, nexus.ErrTimeout) { // A timeout ocurred: pull again
 				atomic.AddUint64(&s.stats.taskPullTimeouts, 1)
 				s.threadsSem.Release()
 				continue
 			}
-			if !s.isStopping() || !util.IsNexusErrCode(err, nexus.ErrCancel) { // An error ocurred (bypass if cancelled because service stop)
+			if !s.isStopping() || !IsNexusErrCode(err, nexus.ErrCancel) { // An error ocurred (bypass if cancelled because service stop)
 				Log(ErrorLevel, logn, "pull %d: pulling task: %s", n, err.Error())
 			}
 			s.nc.Close()

@@ -10,8 +10,8 @@ import (
 
 func main() {
 	// Service
-	s, ok := sugar.NewServiceFromConfig("example")
-	if !ok {
+	s, err := sugar.NewServiceFromConfig("example")
+	if err != nil {
 		return
 	}
 

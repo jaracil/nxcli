@@ -1,4 +1,4 @@
-package util
+package sugar
 
 import (
 	nexus "github.com/jaracil/nxcli/nxcore"

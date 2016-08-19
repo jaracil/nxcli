@@ -11,14 +11,14 @@ import (
 
 func main() {
 	// Service
-	s, ok := sugar.NewServiceFromConfig("jsonschema")
-	if !ok {
+	s, err := sugar.NewServiceFromConfig("jsonschema")
+	if err != nil {
 		return
 	}
 
 	// Config
-	config, ok := sugar.GetConfig()
-	if !ok {
+	config, err := sugar.GetConfig()
+	if err != nil {
 		return
 	}
 

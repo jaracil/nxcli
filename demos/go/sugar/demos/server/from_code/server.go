@@ -14,11 +14,11 @@ func main() {
 	server.SetLogLevel("debug")
 
 	// Each service can sets its own options
-	service1, _ := server.AddService("service1", &sugar.ServiceOpts{"test.sugar.service1", 2, time.Hour, 4, false})
+	service1 := server.AddService("service1", "test.sugar.service1", &sugar.ServiceOpts{2, time.Hour, 4, false})
 	service1.SetStatsPeriod(time.Second * 10)
 
 	// Or get the server default options
-	service2, _ := server.AddService("service2", &sugar.ServiceOpts{"test.sugar.service2", 2, time.Hour, 4, false})
+	service2 := server.AddService("service2", "test.sugar.service2", &sugar.ServiceOpts{2, time.Hour, 4, false})
 	service2.SetStatsPeriod(time.Second * 10)
 
 	// A method that computes fibonacci on both services

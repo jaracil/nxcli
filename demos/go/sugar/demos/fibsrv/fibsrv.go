@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Service
-	s := sugar.NewService("root:root@localhost", &sugar.ServiceOpts{"test.sugar.fibsrv", 4, time.Hour, 12, false})
+	s := sugar.NewService("root:root@localhost", "test.sugar.fibsrv", &sugar.ServiceOpts{4, time.Hour, 12, false})
 	s.SetLogLevel("debug")
 	s.SetStatsPeriod(time.Second * 5)
 

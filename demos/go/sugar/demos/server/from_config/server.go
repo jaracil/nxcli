@@ -10,18 +10,18 @@ import (
 
 func main() {
 	// Server sets defaults for all services
-	server, ok := sugar.NewServerFromConfig()
-	if !ok {
+	server, err := sugar.NewServerFromConfig()
+	if err != nil {
 		return
 	}
 
-	service1, ok := server.AddService("service1", nil)
-	if !ok {
+	service1, err := server.AddService("service1")
+	if err != nil {
 		return
 	}
 
-	service2, ok := server.AddService("service2", nil)
-	if !ok {
+	service2, err := server.AddService("service2")
+	if err != nil {
 		return
 	}
 
