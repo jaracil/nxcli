@@ -99,6 +99,9 @@ func populateOpts(opts *ServiceOpts) *ServiceOpts {
 	if opts.MaxThreads <= 0 {
 		opts.MaxThreads = 1
 	}
+	if opts.MaxThreads < opts.Pulls {
+		opts.MaxThreads = opts.Pulls
+	}
 	return opts
 }
 
@@ -357,6 +360,9 @@ func (s *Service) Serve() error {
 	}
 	if s.Pulls < 0 {
 		s.Pulls = 1
+	}
+	if s.MaxThreads < s.Pulls {
+		s.MaxThreads = s.Pulls
 	}
 	if s.PullTimeout < 0 {
 		s.PullTimeout = 0
