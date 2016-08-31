@@ -13,7 +13,11 @@ import (
 
 	"github.com/jaracil/nxcli/nxcore"
 	"golang.org/x/net/websocket"
+	"github.com/jaracil/ei"
+	
 )
+
+var ErrVersionIncompatible = fmt.Errorf("incompatible version")
 
 type DialOptions struct {
 	WsConfig  *websocket.Config
@@ -124,6 +128,12 @@ func Dial(s string, opts *DialOptions) (*nxcore.NexusConn, error) {
 	if len(hosts) == 0 || err != nil {
 		return nil, err
 	}
-
-	return nxcore.NewNexusConn(conn), nil
+	
+	nxconn := nxcore.NewNexusConn(conn)
+	res, err := nxconn.Exec("sys.version", nil)
+	nxconn.NexusVersion = ei.N(res).M("version").StringZ()
+	if err != nil || !isVersionCompatible(nxconn.NexusVersion) {
+		return nxconn, ErrVersionIncompatible
+	}
+	return nxconn, nil
 }

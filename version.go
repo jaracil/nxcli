@@ -1,6 +1,8 @@
 package nexus
 
 import (
+	"strconv"
+	"strings"
 	"fmt"
 )
 
@@ -16,8 +18,20 @@ type version struct {
 	Patch int
 }
 
-func Version() string {
-	return _version.String()
+var Version = _version.String()
+
+func isVersionCompatible(v string) bool {
+	if v == "" {
+		return false
+	}
+	if verspl := strings.Split(v, "."); len(verspl) != 0 {
+		if major, err := strconv.Atoi(verspl[0]); err == nil {
+			if major != _version.Major {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (v *version) String() string {
