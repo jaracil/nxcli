@@ -12,8 +12,8 @@ type UserSessions struct {
 }
 
 type SessionInfo struct {
-	Id            string    `json:"id"`
-	NodeId        string    `json:"nodeId"`
+	Id            string    `json:"connid"`
+	NodeId        string    `json:"nodeid"`
 	RemoteAddress string    `json:"remoteAddress"`
 	Protocol      string    `json:"protocol"`
 	CreationTime  time.Time `json:"creationTime"`
@@ -48,7 +48,7 @@ func (nc *NexusConn) SessionList(prefix string, limit int, skip int) ([]UserSess
 // Returns the response object from Nexus or error.
 func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
 	par := map[string]interface{}{
-		"connId": connId,
+		"connid": connId,
 	}
 	return nc.Exec("sys.session.kick", par)
 }
@@ -57,7 +57,7 @@ func (nc *NexusConn) SessionKick(connId string) (interface{}, error) {
 // Returns the response object from Nexus or error.
 func (nc *NexusConn) SessionReload(connId string) (interface{}, error) {
 	par := map[string]interface{}{
-		"connId": connId,
+		"connid": connId,
 	}
 	return nc.Exec("sys.session.reload", par)
 }

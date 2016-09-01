@@ -16,17 +16,18 @@ import (
 const (
 	ErrParse            = -32700
 	ErrInvalidRequest   = -32600
-	ErrMethodNotFound   = -32601
-	ErrInvalidParams    = -32602
 	ErrInternal         = -32603
-	ErrTimeout          = -32000
-	ErrCancel           = -32001
-	ErrInvalidTask      = -32002
-	ErrInvalidPipe      = -32003
-	ErrInvalidUser      = -32004
-	ErrUserExists       = -32005
-	ErrPermissionDenied = -32010
+	ErrInvalidParams    = -32602
+	ErrMethodNotFound   = -32601
 	ErrTtlExpired       = -32011
+	ErrPermissionDenied = -32010
+	ErrLockNotOwned     = -32006
+	ErrUserExists       = -32005
+	ErrInvalidUser      = -32004
+	ErrInvalidPipe      = -32003
+	ErrInvalidTask      = -32002
+	ErrCancel           = -32001
+	ErrTimeout          = -32000
 )
 
 var ErrStr = map[int]string{
@@ -43,6 +44,7 @@ var ErrStr = map[int]string{
 	ErrUserExists:       "User already exists",
 	ErrPermissionDenied: "Permission denied",
 	ErrTtlExpired:       "TTL expired",
+	ErrLockNotOwned: 	 "Lock not owned",
 }
 
 type JsonRpcErr struct {
