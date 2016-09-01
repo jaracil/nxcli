@@ -1,0 +1,18 @@
+<html><head><meta charset="utf-8"><script src="nxjs.js"></script></head><body>
+
+dial("ws://192.168.1.246", function(nc, e){
+        nc.Login("root", "root", function(a){
+                console.log("Logged in");
+
+                nc.TaskPush("test.fibonacci.fib", {"v":100}, 10, function(r, e){
+                        console.log("Result:", r);
+                        console.log("ERR:", e);
+                        nc.Cancel();
+                })
+
+        }, function(e){console.log("Couldn't login:", e)})
+})
+
+
+
+</body></html>
