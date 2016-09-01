@@ -6,6 +6,7 @@ type NodeInfo struct {
 	Load    map[string]float64 `json:"load"`
 	Clients int                `json:"clients"`
 	NodeId  string             `json:"id"`
+	Version string             `json:"version"`
 }
 
 // Nodes returns info of the nodes state
