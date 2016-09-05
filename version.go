@@ -1,9 +1,9 @@
 package nexus
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
-	"fmt"
 )
 
 var _version = &version{

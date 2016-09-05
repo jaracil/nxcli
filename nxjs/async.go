@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	nxcli "github.com/jaracil/nxcli"
 	"github.com/jaracil/nxcli/nxcore"
 
 	"github.com/gopherjs/gopherjs/js"
@@ -231,6 +232,12 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(r, e, cb)
 		}()
 	})
+	jsnc.Set("node", func(cb ...*js.Object) {
+		go func() {
+			r, e := nc.Node()
+			ret(r, e, cb)
+		}()
+	})
 	jsnc.Set("pipeCreate", func(jopts ei.M, cb ...*js.Object) {
 		go func() {
 			opts := &nxcore.PipeOpts{
@@ -272,6 +279,18 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 			ret(r, e, cb)
 		}()
 	})
+	jsnc.Set("lock", func(lock string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.Lock(lock)
+			ret(r, e, cb)
+		}()
+	})
+	jsnc.Set("unlock", func(lock string, cb ...*js.Object) {
+		go func() {
+			r, e := nc.Unlock(lock)
+			ret(r, e, cb)
+		}()
+	})
 	jsnc.Set("exec", func(method string, params interface{}, cb ...*js.Object) {
 		go func() {
 			r, e := nc.Exec(method, params)
@@ -285,6 +304,13 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 		}()
 	})
 	jsnc.Set("closed", nc.Closed)
+	jsnc.Set("version", nxcli.Version)
+	jsnc.Set("nexusVersion", func(cb ...*js.Object) {
+		go func() {
+			r, e := nc.NexusVersion()
+			ret(r, e, cb)
+		}()
+	})
 	jsnc.Set("ping", func(timeout float64, cb ...*js.Object) {
 		go func() {
 			e := nc.Ping(time.Duration(timeout * float64(time.Second)))
