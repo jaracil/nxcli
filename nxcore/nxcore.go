@@ -113,7 +113,7 @@ type NexusConn struct {
 	context      context.Context
 	cancelFun    context.CancelFunc
 	wdog         int64
-	nexusVersion string
+	NexusVersion string
 }
 
 // Task represents a task pushed to Nexus.

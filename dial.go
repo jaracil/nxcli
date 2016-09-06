@@ -128,8 +128,9 @@ func Dial(s string, opts *DialOptions) (*nxcore.NexusConn, error) {
 	}
 
 	nxconn := nxcore.NewNexusConn(conn)
-	version, err := nxconn.NexusVersion()
-	if err != nil || version == "" || !isVersionCompatible(version) {
+
+	nxconn.NexusVersion = getNexusVersion(nxconn)
+	if !isVersionCompatible(nxconn.NexusVersion) {
 		return nxconn, ErrVersionIncompatible
 	}
 

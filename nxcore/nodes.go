@@ -68,16 +68,3 @@ func (nc *NexusConn) Node() (*NodeInfo, error) {
 	}
 	return &node, nil
 }
-
-// NexusVersion returns the version of the nexus server the connection is attached to
-// Returns version string or error
-func (nc *NexusConn) NexusVersion() (string, error) {
-	if nc.nexusVersion == "" {
-		res, err := nc.Exec("sys.version", nil)
-		if err != nil {
-			return "", err
-		}
-		nc.nexusVersion = ei.N(res).M("version").StringZ()
-	}
-	return nc.nexusVersion, nil
-}

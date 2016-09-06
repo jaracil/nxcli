@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/jaracil/ei"
+	"github.com/jaracil/nxcli/nxcore"
 )
 
 var _version = &version{
@@ -21,7 +24,7 @@ type version struct {
 var Version = _version.String()
 
 func isVersionCompatible(v string) bool {
-	if v == "" {
+	if v == "" || v == "0.0.0" {
 		return false
 	}
 	if verspl := strings.Split(v, "."); len(verspl) != 0 {
@@ -32,6 +35,14 @@ func isVersionCompatible(v string) bool {
 		}
 	}
 	return true
+}
+
+func getNexusVersion(nc *nxcore.NexusConn) string {
+	res, err := nc.Exec("sys.version", nil)
+	if err == nil {
+		return ei.N(res).M("version").StringZ()
+	}
+	return "0.0.0"
 }
 
 func (v *version) String() string {
