@@ -113,7 +113,17 @@ type NexusConn struct {
 	context      context.Context
 	cancelFun    context.CancelFunc
 	wdog         int64
-	NexusVersion string
+	NexusVersion *NxVersion
+}
+
+type NxVersion struct {
+	Major int
+	Minor int
+	Patch int
+}
+
+func (v *NxVersion) String() string {
+	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 }
 
 // Task represents a task pushed to Nexus.
@@ -195,12 +205,13 @@ type PipeOpts struct {
 // NewNexusConn creates new nexus connection from net.conn
 func NewNexusConn(conn net.Conn) *NexusConn {
 	nc := &NexusConn{
-		conn:     conn,
-		connRx:   smartio.NewSmartReader(conn),
-		connTx:   smartio.NewSmartWriter(conn),
-		resTable: make(map[uint64]chan *JsonRpcRes),
-		chReq:    make(chan *JsonRpcReq, 16),
-		wdog:     60,
+		conn:         conn,
+		connRx:       smartio.NewSmartReader(conn),
+		connTx:       smartio.NewSmartWriter(conn),
+		resTable:     make(map[uint64]chan *JsonRpcRes),
+		chReq:        make(chan *JsonRpcReq, 16),
+		wdog:         60,
+		NexusVersion: &NxVersion{0, 0, 0},
 	}
 	nc.context, nc.cancelFun = context.WithCancel(context.Background())
 	go nc.sendWorker()

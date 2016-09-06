@@ -304,8 +304,8 @@ func WrapNexusConn(nc *nxcore.NexusConn) *js.Object {
 		}()
 	})
 	jsnc.Set("closed", nc.Closed)
-	jsnc.Set("version", nxcli.Version)
-	jsnc.Set("nexusVersion", nc.NexusVersion)
+	jsnc.Set("version", func() string { return nxcli.Version.String() })
+	jsnc.Set("nexusVersion", func() string { return nxcli.NexusVersion.String() })
 	jsnc.Set("ping", func(timeout float64, cb ...*js.Object) {
 		go func() {
 			e := nc.Ping(time.Duration(timeout * float64(time.Second)))
